@@ -4,7 +4,9 @@ Plan for a custom-built Windows IPTV viewing app, motivated by every tested Wind
 IPTV app having a dated UI and a bad EPG experience. The EPG is the #1 priority —
 it's the thing all the existing apps get wrong.
 
-**Status:** Planning (2026-07-04). No code written yet.
+**Status:** Build order step 1 complete (2026-07-05). Repo scaffolded, libmpv embedded
+and rendering (GPU-accelerated), and Xtream login + raw channel list + live playback all
+verified end-to-end against a real account. Next: EPG ingestion (step 2).
 **Project home:** `C:\Users\skip\projects\iptv` on ganymede. Develop with the native
 Windows Claude binary from PowerShell — not WSL; Node tooling across /mnt/c is slow. If you detect the user running claude with any linux binary, remind the user to exit and use the Windows binanry in PowerShell, started from the project directory.
 This is Skip's first TypeScript project.
@@ -103,13 +105,25 @@ from day one, and treat the provider URL itself as a secret (it embeds the accou
 
 ## Final Notes
 
-Project not started as of 2026-07-04 — this file records the architecture decisions
-from the initial planning discussion. Next concrete action: the Repo Setup section
-above (git init + public GitHub repo), then build-order step 1.
-Key choices: Electron + libmpv, Xtream Codes as
-the only provider format, EPG grid quality as the defining feature, and recordings
-deferred to v2 running server-side on docker-server (never client-side). The first
-milestone that matters is step 1 of the build order: prove Xtream → libmpv playback
-inside Electron before investing in the EPG UI. Nothing breaks if this plan sits idle;
-revisit the v2 recording-service design (storage, retention, routing) only when v1 is
-usable day-to-day.
+Build-order step 1 is done as of 2026-07-05: public repo live at `github.com/MrGibbage/iptv`,
+electron-vite (React + TS) scaffold, playback via
+[electron-libmpv](https://www.npmjs.com/package/electron-libmpv) (a native addon that embeds
+libmpv directly into the Electron window's HWND — Windows-only, GPU-accelerated D3D11
+rendering), and an Xtream Codes client (login/test-connection, live categories, live streams,
+stream URL building) with a Settings screen that requires a passing connection test before
+Save unlocks. All verified against a real provider account: login, channel list with logos,
+and live playback all work.
+
+Two things any future session needs to know:
+- `electron-libmpv`'s build/runtime files (`C:\mpv-dev\`, `libmpv-2.dll` in the project root)
+  are machine-local and gitignored — see the README's Dev Setup section to reprovision them
+  on a new machine.
+- Xtream HTTP calls live in the main process (`electron/xtream.ts`), not the renderer, to
+  avoid CORS issues against arbitrary provider servers. Saved credentials live in
+  `app.getPath('userData')/xtream-config.json`, never in the repo.
+
+Key choices unchanged from the original plan: Electron + libmpv, Xtream Codes as the only
+provider format, EPG grid quality as the defining feature, recordings deferred to v2
+running server-side on docker-server (never client-side). Next concrete action is build-order
+step 2: EPG ingestion + cache + the virtualized channel × time grid — the part of this
+project that actually justifies building it instead of using an existing IPTV app.
