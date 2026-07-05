@@ -119,8 +119,10 @@
   background: var(--bg-2);
 }
 
+/* Sticky cell: programme blocks scroll underneath it, so the translucent
+   accent must sit on an opaque base or the blocks bleed through. */
 .epg-channel-cell.epg-tuned {
-  background: var(--accent-soft);
+  background: linear-gradient(var(--accent-soft), var(--accent-soft)) var(--bg-1);
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
