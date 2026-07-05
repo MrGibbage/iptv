@@ -1,8 +1,16 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import Mpv from 'electron-libmpv'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+// Required for libmpv to render via GPU-accelerated D3D11 into the embedded window.
+app.commandLine.appendSwitch('use-angle', 'd3d11')
+app.commandLine.appendSwitch('ignore-gpu-blocklist')
+app.commandLine.appendSwitch('enable-zero-copy')
+app.commandLine.appendSwitch('enable-gpu-rasterization')
+app.commandLine.appendSwitch('enable-accelerated-video-decode')
 
 // The built directory structure
 //
@@ -23,6 +31,7 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
 let win: BrowserWindow | null
+let player: InstanceType<typeof Mpv> | null = null
 
 function createWindow() {
   win = new BrowserWindow({
@@ -43,6 +52,37 @@ function createWindow() {
     // win.loadFile('dist/index.html')
     win.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
+
+  setupMpv(win)
+}
+
+function setupMpv(window: BrowserWindow) {
+  player = new Mpv({
+    onEvent: () => {
+      window.webContents.send('mpv:event')
+    },
+  })
+
+  ipcMain.handle('mpv:attach', (_event, x: number, y: number, width: number, height: number) => {
+    const handle = window.getNativeWindowHandle()
+    return player!.attach(handle, x, y, width, height)
+  })
+
+  ipcMain.handle('mpv:resize', (_event, x: number, y: number, width: number, height: number) => {
+    player?.resize(x, y, width, height)
+  })
+
+  ipcMain.handle('mpv:command', (_event, ...args: string[]) => {
+    return player?.command(...args)
+  })
+
+  ipcMain.handle('mpv:setProperty', (_event, name: string, value: string | number | boolean) => {
+    return player?.property(name, value)
+  })
+
+  ipcMain.handle('mpv:getProperty', (_event, name: string) => {
+    return player?.getRawProperty(name) ?? null
+  })
 }
 
 // Quit when all windows are closed, except on macOS. There, it's common

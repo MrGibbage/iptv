@@ -11,6 +11,16 @@ export default defineConfig({
       main: {
         // Shortcut of `build.lib.entry`.
         entry: 'electron/main.ts',
+        vite: {
+          build: {
+            rollupOptions: {
+              // electron-libmpv dynamically requires its compiled .node addon
+              // relative to __dirname; bundling it breaks that lookup, so keep
+              // it external and let Node's own require/import resolve it.
+              external: ['electron-libmpv'],
+            },
+          },
+        },
       },
       preload: {
         // Shortcut of `build.rollupOptions.input`.
