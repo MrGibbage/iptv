@@ -55,3 +55,18 @@ contextBridge.exposeInMainWorld('settings', {
   load: () => ipcRenderer.invoke('settings:load'),
   save: (config: XtreamConfig) => ipcRenderer.invoke('settings:save', config),
 })
+
+// --------- Expose the EPG cache to the Renderer process ---------
+contextBridge.exposeInMainWorld('epg', {
+  refresh: (config: XtreamConfig, force?: boolean) => ipcRenderer.invoke('epg:refresh', config, force),
+  getStatus: () => ipcRenderer.invoke('epg:getStatus'),
+  getProgrammes: (channelIds: string[], fromMs: number, toMs: number) =>
+    ipcRenderer.invoke('epg:getProgrammes', channelIds, fromMs, toMs),
+  search: (query: string) => ipcRenderer.invoke('epg:search', query),
+  getBounds: () => ipcRenderer.invoke('epg:getBounds'),
+  onStatus: (callback: (status: unknown) => void) => {
+    const listener = (_event: unknown, status: unknown) => callback(status)
+    ipcRenderer.on('epg:status', listener as never)
+    return () => ipcRenderer.removeListener('epg:status', listener as never)
+  },
+})

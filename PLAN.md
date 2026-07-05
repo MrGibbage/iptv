@@ -4,9 +4,11 @@ Plan for a custom-built Windows IPTV viewing app, motivated by every tested Wind
 IPTV app having a dated UI and a bad EPG experience. The EPG is the #1 priority —
 it's the thing all the existing apps get wrong.
 
-**Status:** Build order step 1 complete (2026-07-05). Repo scaffolded, libmpv embedded
-and rendering (GPU-accelerated), and Xtream login + raw channel list + live playback all
-verified end-to-end against a real account. Next: EPG ingestion (step 2).
+**Status:** Build order step 2 complete (2026-07-05). EPG ingestion (streaming XMLTV →
+SQLite + FTS5 cache), virtualized channel × time grid with day nav / now-line / detail
+pane, and full search (channel name, title, AND description) all verified end-to-end —
+both against the local sample file and a real provider download. Next: Live TV UX
+polish (step 3: favorites, channel-name search, quick switching).
 **Project home:** `C:\Users\skip\projects\iptv` on ganymede. Develop with the native
 Windows Claude binary from PowerShell — not WSL; Node tooling across /mnt/c is slow. If you detect the user running claude with any linux binary, remind the user to exit and use the Windows binanry in PowerShell, started from the project directory.
 This is Skip's first TypeScript project.
@@ -137,8 +139,32 @@ planned; EPG search was clarified to explicitly require matching channel name, p
 title, AND program description, not just channel name — that's a step 2 deliverable since
 it needs the ingested EPG data. Neither got pushed to v2; both fit v1 cleanly.
 
+Build-order step 2 is done as of 2026-07-05 — the EPG, the feature this project exists for:
+
+- **Ingestion/cache:** the provider's full XMLTV (`xmltv.php`, ~28 MB) streams through a
+  SAX parser into `better-sqlite3` at `userData/epg-cache.sqlite3` — channels, programmes
+  (indexed by channel + time), an FTS5 index for search, all replaced atomically in one
+  transaction. Auto-refresh on start when older than 12 h (rechecked hourly) + manual
+  Refresh button. `IPTV_EPG_FILE` env var ingests a local file instead (dev).
+- **Grid:** Guide tab with a `@tanstack/react-virtual` channel × time grid (rows join the
+  live-stream list to XMLTV ids via `epg_channel_id`), sticky channel column + time ruler,
+  now-line, jump-to-now, day navigation clamped to data bounds, programme detail pane with
+  a Watch button, click-channel-to-tune. Verified smooth with ~2 k channels / ~96 k
+  programmes — only visible rows hit the DOM, programme data loads on demand per visible
+  channel.
+- **Search:** FTS5 across channel name, title, AND description (the step-2 requirement);
+  clicking a result jumps the grid to that channel + time and opens the detail pane.
+- Also landed: a now/next bar above the player driven by the same cache.
+
+Gotchas for future sessions: native/CJS modules (`electron-libmpv`, `better-sqlite3`,
+`sax`) must stay in `rollupOptions.external` in `vite.config.ts` — Rollup's CJS interop
+mangles `sax` at runtime ("Cannot read properties of undefined (reading 'call')") and
+bundling breaks native addon path resolution. The mpv video surface is a native child
+window, so the always-mounted Player is hidden by collapsing its placeholder to 0×0
+(display:none + ResizeObserver) when the Guide tab is open.
+
 Key choices unchanged from the original plan: Electron + libmpv, Xtream Codes as the only
 provider format, EPG grid quality as the defining feature, recordings deferred to v2
 running server-side on docker-server (never client-side). Next concrete action is build-order
-step 2: EPG ingestion + cache + the virtualized channel × time grid — the part of this
-project that actually justifies building it instead of using an existing IPTV app.
+step 3: Live TV UX polish — favorites (star + persist + favorites-first/filter view),
+channel-name search over the loaded list, and quick channel switching.

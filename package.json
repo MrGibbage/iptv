@@ -11,14 +11,19 @@
     "postinstall": "electron-rebuild"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.14.5",
+    "better-sqlite3": "^12.11.1",
     "electron-libmpv": "^1.1.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "sax": "^1.6.0"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.1.0",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/react": "^18.2.64",
     "@types/react-dom": "^18.2.21",
+    "@types/sax": "^1.2.7",
     "@typescript-eslint/eslint-plugin": "^7.1.1",
     "@typescript-eslint/parser": "^7.1.1",
     "@vitejs/plugin-react": "^4.2.1",

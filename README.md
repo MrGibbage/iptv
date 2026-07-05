@@ -26,6 +26,23 @@ runtime files are gitignored (large binaries, not source) and must be set up man
    `package.json`) — required for the dev server / `electron .` to find it at runtime.
 
 ```powershell
-npm install       # also rebuilds electron-libmpv's native addon for Electron's ABI
+npm install       # also rebuilds native addons (electron-libmpv, better-sqlite3) for Electron's ABI
 npm run dev
 ```
+
+## EPG (guide) internals
+
+The guide is cached in SQLite (`better-sqlite3`) at `%APPDATA%/iptv/epg-cache.sqlite3`,
+with an FTS5 index so search matches channel name, programme title, AND description.
+Ingestion streams the provider's full XMLTV feed (`xmltv.php`) through a SAX parser —
+feeds are tens of MB, so they never fully materialize in memory. The cache refreshes on
+app start when older than 12 hours (rechecked hourly), or on demand via the Guide tab's
+Refresh button.
+
+Dev tip: set `IPTV_EPG_FILE` to a local XMLTV file path before `npm run dev` to ingest
+from disk instead of hitting the provider (e.g. the gitignored sample in the project
+root).
+
+Native/CJS modules (`electron-libmpv`, `better-sqlite3`, `sax`) must stay in
+`rollupOptions.external` in `vite.config.ts` — bundling them into the ESM main bundle
+breaks addon path resolution (and Rollup's CJS interop mangles `sax` at runtime).

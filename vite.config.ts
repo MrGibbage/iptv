@@ -14,10 +14,13 @@ export default defineConfig({
         vite: {
           build: {
             rollupOptions: {
-              // electron-libmpv dynamically requires its compiled .node addon
-              // relative to __dirname; bundling it breaks that lookup, so keep
-              // it external and let Node's own require/import resolve it.
-              external: ['electron-libmpv'],
+              // electron-libmpv and better-sqlite3 load compiled .node addons
+              // relative to their own __dirname; bundling breaks that lookup.
+              // sax is CommonJS that Rollup's ESM interop mangles at runtime.
+              // Keep all three external and let Node's require/import resolve
+              // them from node_modules (they're runtime dependencies, so
+              // electron-builder packages them).
+              external: ['electron-libmpv', 'better-sqlite3', 'sax'],
             },
           },
         },

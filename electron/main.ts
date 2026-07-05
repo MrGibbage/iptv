@@ -5,6 +5,8 @@ import Mpv from 'electron-libmpv'
 import type { XtreamConfig } from './xtream'
 import * as xtream from './xtream'
 import * as settingsStore from './settings-store'
+import * as epg from './epg'
+import * as epgDb from './epg-db'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -112,6 +114,37 @@ ipcMain.handle('settings:save', (_event, config: XtreamConfig) => {
   return settingsStore.saveConfig(config)
 })
 
+ipcMain.handle('epg:refresh', (_event, config: XtreamConfig, force?: boolean) => {
+  return epg.refresh(config, force ?? false)
+})
+
+ipcMain.handle('epg:getStatus', () => {
+  return epg.getStatus()
+})
+
+ipcMain.handle('epg:getProgrammes', (_event, channelIds: string[], fromMs: number, toMs: number) => {
+  return epgDb.getProgrammes(channelIds, fromMs, toMs)
+})
+
+ipcMain.handle('epg:search', (_event, query: string) => {
+  return epgDb.search(query)
+})
+
+ipcMain.handle('epg:getBounds', () => {
+  return epgDb.getBounds()
+})
+
+epg.onStatusChange((status) => {
+  win?.webContents.send('epg:status', status)
+})
+
+// Refresh the EPG cache on startup when stale (TTL lives in epg.ts), then
+// keep checking hourly while the app stays open.
+async function refreshEpgIfConfigured() {
+  const config = await settingsStore.loadConfig()
+  if (config) await epg.refresh(config)
+}
+
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
@@ -130,4 +163,8 @@ app.on('activate', () => {
   }
 })
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  createWindow()
+  refreshEpgIfConfigured()
+  setInterval(refreshEpgIfConfigured, 60 * 60 * 1000)
+})

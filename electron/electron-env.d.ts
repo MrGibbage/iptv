@@ -52,4 +52,19 @@ interface Window {
     load: () => Promise<import('../electron/xtream').XtreamConfig | null>
     save: (config: import('../electron/xtream').XtreamConfig) => Promise<void>
   }
+  epg: {
+    refresh: (
+      config: import('../electron/xtream').XtreamConfig,
+      force?: boolean,
+    ) => Promise<import('../electron/epg').EpgStatus>
+    getStatus: () => Promise<import('../electron/epg').EpgStatus>
+    getProgrammes: (
+      channelIds: string[],
+      fromMs: number,
+      toMs: number,
+    ) => Promise<import('../electron/epg-db').EpgProgramme[]>
+    search: (query: string) => Promise<import('../electron/epg-db').EpgSearchResult[]>
+    getBounds: () => Promise<import('../electron/epg-db').EpgBounds>
+    onStatus: (callback: (status: import('../electron/epg').EpgStatus) => void) => () => void
+  }
 }

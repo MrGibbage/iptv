@@ -1,0 +1,372 @@
+.epg-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+}
+
+.epg-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #3a3a3a;
+  flex-wrap: wrap;
+}
+
+.epg-toolbar button {
+  padding: 0.3em 0.8em;
+  font-size: 0.9em;
+}
+
+.epg-toolbar .epg-day-label {
+  min-width: 130px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.epg-search-input {
+  flex: 1;
+  min-width: 160px;
+  max-width: 340px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #4a4a4a;
+  background: #1a1a1a;
+  color: inherit;
+  font-size: 0.9em;
+}
+
+.epg-status {
+  margin-left: auto;
+  font-size: 0.78em;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.epg-status.epg-status-error {
+  color: #f87171;
+  opacity: 1;
+}
+
+.epg-scroll {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+  background: #1c1c1c;
+}
+
+.epg-ruler {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: #242424;
+  border-bottom: 1px solid #3a3a3a;
+}
+
+.epg-ruler-corner {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  height: 100%;
+  background: #242424;
+  border-right: 1px solid #3a3a3a;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 0.75em;
+  opacity: 0.7;
+  box-sizing: border-box;
+}
+
+.epg-tick {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  font-size: 0.75em;
+  opacity: 0.75;
+  padding-left: 5px;
+  border-left: 1px solid #3a3a3a;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.epg-row {
+  position: absolute;
+  left: 0;
+  border-bottom: 1px solid #2c2c2c;
+  box-sizing: border-box;
+}
+
+.epg-channel-cell {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  width: 220px;
+  height: 100%;
+  background: #242424;
+  border-right: 1px solid #3a3a3a;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.epg-channel-cell:hover {
+  background: #2e2e2e;
+}
+
+.epg-channel-cell.epg-tuned {
+  background: #2563eb33;
+}
+
+.epg-channel-cell img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.epg-channel-cell span {
+  font-size: 0.82em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.epg-block {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  background: #2f2f38;
+  border: 1px solid #45454f;
+  border-radius: 4px;
+  padding: 3px 6px;
+  box-sizing: border-box;
+  overflow: hidden;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.epg-block:hover {
+  background: #3a3a46;
+  border-color: #646cff;
+}
+
+.epg-block.epg-block-selected {
+  background: #2563eb55;
+  border-color: #2563eb;
+}
+
+.epg-block.epg-block-past {
+  opacity: 0.55;
+}
+
+.epg-block .epg-block-title {
+  font-size: 0.8em;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.epg-block .epg-block-time {
+  font-size: 0.7em;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.epg-no-data {
+  position: absolute;
+  left: 230px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.78em;
+  opacity: 0.4;
+  font-style: italic;
+}
+
+.epg-now-line {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  background: #ef4444;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.epg-detail {
+  border-top: 1px solid #3a3a3a;
+  padding: 10px 14px;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  min-height: 96px;
+  max-height: 170px;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.epg-detail-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.epg-detail-title {
+  font-weight: 700;
+  font-size: 1.02em;
+}
+
+.epg-detail-meta {
+  font-size: 0.82em;
+  opacity: 0.75;
+  margin: 2px 0 6px;
+}
+
+.epg-detail-desc {
+  font-size: 0.86em;
+  opacity: 0.9;
+  white-space: pre-wrap;
+}
+
+.epg-detail-empty {
+  opacity: 0.5;
+  font-size: 0.86em;
+  align-self: center;
+}
+
+.epg-search-results {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.epg-search-result {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  padding: 8px 14px;
+  border-bottom: 1px solid #2c2c2c;
+  cursor: pointer;
+}
+
+.epg-search-result:hover {
+  background: #2e2e2e;
+}
+
+.epg-search-result .epg-sr-time {
+  font-size: 0.8em;
+  opacity: 0.75;
+  white-space: nowrap;
+  min-width: 150px;
+}
+
+.epg-search-result .epg-sr-channel {
+  font-size: 0.8em;
+  opacity: 0.85;
+  min-width: 200px;
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.epg-search-result .epg-sr-title {
+  font-weight: 600;
+  font-size: 0.88em;
+  white-space: nowrap;
+}
+
+.epg-search-result .epg-sr-desc {
+  font-size: 0.8em;
+  opacity: 0.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.epg-empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  opacity: 0.8;
+}
+
+.nownext-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 12px;
+  border-bottom: 1px solid #3a3a3a;
+  font-size: 0.85em;
+  min-height: 34px;
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.nownext-bar .nn-channel {
+  font-weight: 700;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nownext-bar .nn-slot {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nownext-bar .nn-label {
+  opacity: 0.6;
+  font-size: 0.85em;
+  margin-right: 4px;
+}
+
+@media (prefers-color-scheme: light) {
+  .epg-scroll {
+    background: #fafafa;
+  }
+  .epg-ruler,
+  .epg-ruler-corner,
+  .epg-channel-cell {
+    background: #ffffff;
+  }
+  .epg-channel-cell:hover,
+  .epg-search-result:hover {
+    background: #f0f0f0;
+  }
+  .epg-toolbar,
+  .epg-ruler,
+  .epg-detail,
+  .nownext-bar {
+    border-color: #ddd;
+  }
+  .epg-ruler-corner,
+  .epg-channel-cell,
+  .epg-tick {
+    border-color: #ddd;
+  }
+  .epg-row,
+  .epg-search-result {
+    border-color: #eee;
+  }
+  .epg-block {
+    background: #eef0f4;
+    border-color: #d5d8e0;
+  }
+  .epg-block:hover {
+    background: #e2e6ee;
+  }
+  .epg-search-input {
+    background: #ffffff;
+    border-color: #ccc;
+  }
+}

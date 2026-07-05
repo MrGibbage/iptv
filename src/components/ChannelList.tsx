@@ -1,37 +1,14 @@
-import { useEffect, useState } from 'react'
-import type { XtreamConfig, LiveStream } from '../../electron/xtream'
+import type { LiveStream } from '../../electron/xtream'
 
 interface ChannelListProps {
-  config: XtreamConfig
+  channels: LiveStream[]
+  loading: boolean
+  error: string | null
   onSelect: (stream: LiveStream) => void
   selectedStreamId: number | null
 }
 
-function ChannelList({ config, onSelect, selectedStreamId }: ChannelListProps) {
-  const [channels, setChannels] = useState<LiveStream[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    window.xtream
-      .getLiveStreams(config)
-      .then((streams) => {
-        if (!cancelled) setChannels(streams)
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [config])
-
+function ChannelList({ channels, loading, error, onSelect, selectedStreamId }: ChannelListProps) {
   if (loading) return <p style={{ padding: 16 }}>Loading channels...</p>
   if (error) return <p style={{ padding: 16, color: 'crimson' }}>Failed to load channels: {error}</p>
 
