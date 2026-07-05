@@ -1,4 +1,5 @@
 import { ipcRenderer, contextBridge } from 'electron'
+import type { XtreamConfig } from './xtream'
 
 // --------- Expose some API to the Renderer process ---------
 contextBridge.exposeInMainWorld('ipcRenderer', {
@@ -38,4 +39,19 @@ contextBridge.exposeInMainWorld('mpv', {
     ipcRenderer.on('mpv:event', listener)
     return () => ipcRenderer.removeListener('mpv:event', listener)
   },
+})
+
+// --------- Expose Xtream API + settings persistence to the Renderer process ---------
+contextBridge.exposeInMainWorld('xtream', {
+  testConnection: (config: XtreamConfig) => ipcRenderer.invoke('xtream:testConnection', config),
+  getLiveCategories: (config: XtreamConfig) => ipcRenderer.invoke('xtream:getLiveCategories', config),
+  getLiveStreams: (config: XtreamConfig, categoryId?: string) =>
+    ipcRenderer.invoke('xtream:getLiveStreams', config, categoryId),
+  buildLiveStreamUrl: (config: XtreamConfig, streamId: number) =>
+    ipcRenderer.invoke('xtream:buildLiveStreamUrl', config, streamId),
+})
+
+contextBridge.exposeInMainWorld('settings', {
+  load: () => ipcRenderer.invoke('settings:load'),
+  save: (config: XtreamConfig) => ipcRenderer.invoke('settings:save', config),
 })

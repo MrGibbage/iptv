@@ -2,6 +2,9 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import Mpv from 'electron-libmpv'
+import type { XtreamConfig } from './xtream'
+import * as xtream from './xtream'
+import * as settingsStore from './settings-store'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -84,6 +87,30 @@ function setupMpv(window: BrowserWindow) {
     return player?.getRawProperty(name) ?? null
   })
 }
+
+ipcMain.handle('xtream:testConnection', (_event, config: XtreamConfig) => {
+  return xtream.testConnection(config)
+})
+
+ipcMain.handle('xtream:getLiveCategories', (_event, config: XtreamConfig) => {
+  return xtream.getLiveCategories(config)
+})
+
+ipcMain.handle('xtream:getLiveStreams', (_event, config: XtreamConfig, categoryId?: string) => {
+  return xtream.getLiveStreams(config, categoryId)
+})
+
+ipcMain.handle('xtream:buildLiveStreamUrl', (_event, config: XtreamConfig, streamId: number) => {
+  return xtream.buildLiveStreamUrl(config, streamId)
+})
+
+ipcMain.handle('settings:load', () => {
+  return settingsStore.loadConfig()
+})
+
+ipcMain.handle('settings:save', (_event, config: XtreamConfig) => {
+  return settingsStore.saveConfig(config)
+})
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits

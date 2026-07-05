@@ -32,4 +32,24 @@ interface Window {
     getProperty: (name: string) => Promise<string | null>
     onEvent: (callback: () => void) => () => void
   }
+  xtream: {
+    testConnection: (
+      config: import('../electron/xtream').XtreamConfig,
+    ) => Promise<import('../electron/xtream').XtreamTestResult>
+    getLiveCategories: (
+      config: import('../electron/xtream').XtreamConfig,
+    ) => Promise<import('../electron/xtream').LiveCategory[]>
+    getLiveStreams: (
+      config: import('../electron/xtream').XtreamConfig,
+      categoryId?: string,
+    ) => Promise<import('../electron/xtream').LiveStream[]>
+    buildLiveStreamUrl: (
+      config: import('../electron/xtream').XtreamConfig,
+      streamId: number,
+    ) => Promise<string>
+  }
+  settings: {
+    load: () => Promise<import('../electron/xtream').XtreamConfig | null>
+    save: (config: import('../electron/xtream').XtreamConfig) => Promise<void>
+  }
 }

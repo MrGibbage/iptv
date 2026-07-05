@@ -1,34 +1,59 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/electron-vite.animate.svg'
-import './App.css'
+import { useEffect, useState } from 'react'
+import type { XtreamConfig, LiveStream } from '../electron/xtream'
+import SettingsScreen from './components/SettingsScreen'
+import ChannelList from './components/ChannelList'
+import Player from './components/Player'
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [config, setConfig] = useState<XtreamConfig | null>(null)
+  const [configLoaded, setConfigLoaded] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [selectedStream, setSelectedStream] = useState<LiveStream | null>(null)
+  const [streamUrl, setStreamUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    window.settings.load().then((loaded) => {
+      setConfig(loaded)
+      setConfigLoaded(true)
+    })
+  }, [])
+
+  useEffect(() => {
+    if (config && selectedStream) {
+      window.xtream.buildLiveStreamUrl(config, selectedStream.streamId).then(setStreamUrl)
+    }
+  }, [config, selectedStream])
+
+  if (!configLoaded) return null
+
+  if (!config || showSettings) {
+    return (
+      <SettingsScreen
+        initialConfig={config}
+        onSaved={(saved) => {
+          setConfig(saved)
+          setShowSettings(false)
+        }}
+      />
+    )
+  }
 
   return (
-    <>
-      <div>
-        <a href="https://electron-vite.github.io" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
+    <div style={{ display: 'flex', height: '100vh' }}>
+      <div style={{ width: 280, borderRight: '1px solid #ddd', display: 'flex', flexDirection: 'column' }}>
+        <button onClick={() => setShowSettings(true)} style={{ margin: 8 }}>
+          Settings
         </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
+        <ChannelList
+          config={config}
+          selectedStreamId={selectedStream?.streamId ?? null}
+          onSelect={setSelectedStream}
+        />
       </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+      <div style={{ flex: 1 }}>
+        <Player streamUrl={streamUrl} />
+      </div>
+    </div>
   )
 }
 
