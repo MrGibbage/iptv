@@ -90,6 +90,13 @@ export function configureMpv(): void {
   // hang came from a malformed HEVC stream on d3d11va, so narrowing when
   // hwdec is used at all reduces (not eliminates) the risk of a repeat.
   player?.property('hwdec', 'auto-safe')
+  // mpv's ytdl_hook script shells out to youtube-dl/yt-dlp for URLs it
+  // doesn't recognize as a direct stream — this app doesn't bundle that
+  // binary (every URL here is a direct Xtream endpoint, never a page needing
+  // extraction), so on the channels whose URL trips the hook's heuristics it
+  // just fails with "not found or not enough permissions". Disable the hook
+  // outright rather than let it try and fail.
+  player?.property('ytdl', 'no')
 }
 
 function clearTimers(): void {
