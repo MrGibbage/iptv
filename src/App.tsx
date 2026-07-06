@@ -6,6 +6,7 @@ import ChannelList from './components/ChannelList'
 import Player from './components/Player'
 import EpgGrid from './components/EpgGrid'
 import NowNextBar from './components/NowNextBar'
+import PlayerStats from './components/PlayerStats'
 import './app.css'
 
 type View = 'live' | 'guide'
@@ -27,6 +28,9 @@ function App() {
   const [hiddenIds, setHiddenIds] = useState<Set<number>>(new Set())
   const [prefsLoaded, setPrefsLoaded] = useState(false)
   const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus | null>(null)
+  const [isFullScreen, setIsFullScreen] = useState(false)
+  const [sidebarVisible, setSidebarVisible] = useState(true)
+  const [showFsHint, setShowFsHint] = useState(false)
   const lastStreamIdRef = useRef<number | null>(null)
   const resumedRef = useRef(false)
 
@@ -52,6 +56,29 @@ function App() {
   }
 
   useEffect(() => window.playback.onStatus(setPlaybackStatus), [])
+
+  // F11/Esc are bound directly in the main process, so this only keeps the
+  // header button's icon/label (and theater mode below) in sync when full
+  // screen was toggled that way.
+  useEffect(() => {
+    window.app.isFullScreen().then(setIsFullScreen)
+    return window.app.onFullScreenChange(setIsFullScreen)
+  }, [])
+
+  // Full screen on the Live tab goes into "theater mode": header, sidebar,
+  // and the now/next toolbar disappear so only the video remains, since with
+  // them gone there's no on-screen way back, a brief hint is shown for a few
+  // seconds pointing at F11/Esc.
+  const theaterMode = isFullScreen && view === 'live'
+  useEffect(() => {
+    if (!theaterMode) {
+      setShowFsHint(false)
+      return
+    }
+    setShowFsHint(true)
+    const timer = setTimeout(() => setShowFsHint(false), 3000)
+    return () => clearTimeout(timer)
+  }, [theaterMode])
 
   useEffect(
     () =>
@@ -224,6 +251,31 @@ function App() {
     return () => window.removeEventListener('keydown', onKey)
   })
 
+  // Tab jumps to the guide and back while full screen, so the EPG stays a
+  // keypress away even with the header (and its Guide tab button) hidden by
+  // theater mode. Scoped to full screen only so it doesn't steal normal
+  // Tab focus-cycling elsewhere (Settings fields, the guide's own search box).
+  useEffect(() => {
+    if (!isFullScreen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (showSettings || e.key !== 'Tab') return
+      const target = e.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
+      e.preventDefault()
+      setView((v) => (v === 'live' ? 'guide' : 'live'))
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isFullScreen, showSettings])
+
+  // Theater mode is meant to be distraction-free with nothing to click, so
+  // hide the mouse cursor over the video too — a CSS cursor rule on the React
+  // tree wouldn't reach it, since mpv renders into a native child window that
+  // draws its own cursor independent of the page underneath.
+  useEffect(() => {
+    window.mpv.setProperty('cursor-autohide', theaterMode ? 'always' : 'no')
+  }, [theaterMode])
+
   // Last-channel resume: once channels and prefs are both in, re-tune the
   // channel that was playing when the app last closed (never a hidden one).
   useEffect(() => {
@@ -236,112 +288,159 @@ function App() {
 
   if (!configLoaded) return null
 
-  if (!config || showSettings) {
-    return (
-      <SettingsScreen
-        initialConfig={config}
-        onSaved={(saved) => {
-          setConfig(saved)
-          setShowSettings(false)
-        }}
-        onCancel={config ? () => setShowSettings(false) : undefined}
-        channels={channels}
-        hiddenIds={hiddenIds}
-        onUnhideChannel={unhideChannel}
-      />
-    )
-  }
+  const settingsOpen = !config || showSettings
 
   return (
     <div className="app-root">
-      <header className="app-header">
-        <div className="app-title">
-          <span className="app-title-mark">▶</span> IPTV
-        </div>
-        <nav className="app-tabs">
-          <button className={`app-tab${view === 'live' ? ' active' : ''}`} onClick={() => setView('live')}>
-            Live TV
-          </button>
-          <button className={`app-tab${view === 'guide' ? ' active' : ''}`} onClick={() => setView('guide')}>
-            Guide
-          </button>
-        </nav>
-        <div className="app-header-spacer" />
-        <button className="app-settings-btn" onClick={() => setShowSettings(true)}>
-          Settings
-        </button>
-      </header>
+      {settingsOpen && (
+        <SettingsScreen
+          initialConfig={config}
+          onSaved={(saved) => {
+            setConfig(saved)
+            setShowSettings(false)
+          }}
+          onCancel={config ? () => setShowSettings(false) : undefined}
+          channels={channels}
+          hiddenIds={hiddenIds}
+          onUnhideChannel={unhideChannel}
+        />
+      )}
 
-      {/* The live view stays mounted while the guide is open: the mpv video
-          surface is a native child window, so hiding its placeholder (display:
-          none) collapses it to 0×0 via Player's ResizeObserver while playback
-          (audio) continues. */}
-      <div className="app-live" style={{ display: view === 'live' ? 'flex' : 'none' }}>
-        <aside className="app-sidebar">
-          <ChannelList
-            channels={displayChannels}
-            totalCount={channels.length}
-            loading={channelsLoading}
-            error={channelsError}
-            selectedStreamId={selectedStream?.streamId ?? null}
-            onSelect={tune}
-            favorites={favorites}
-            onToggleFavorite={toggleFavorite}
-            favoritesOnly={favoritesOnly}
-            onToggleFavoritesOnly={() => setFavoritesOnly((v) => !v)}
-            filterText={channelFilter}
-            onFilterTextChange={setChannelFilter}
-            onHideChannel={hideChannel}
-          />
-        </aside>
-        <div className="app-player-col">
-          <NowNextBar stream={selectedStream} />
-          {/* Playback state must render OUTSIDE the player surface — the mpv
-              video is a native child window that paints over any HTML in
-              that rectangle. */}
-          {playbackStatus && playbackStatus.state !== 'idle' && playbackStatus.state !== 'playing' && (
-            <div
-              className={`playback-bar${playbackStatus.state !== 'loading' ? ' playback-bar-error' : ''}`}
-            >
-              {playbackStatus.state === 'loading' ? (
-                <span>Tuning {selectedStream ? selectedStream.name : ''}…</span>
-              ) : playbackStatus.state === 'wedged' ? (
-                <span className="playback-bar-msg">
-                  {playbackStatus.message} This channel has been hidden.
-                </span>
-              ) : (
-                <>
-                  <span className="playback-bar-msg">
-                    {playbackStatus.message ?? 'Playback failed'}
-                  </span>
-                  {streamUrl && (
-                    <button
-                      onClick={() => window.playback.play(streamUrl, selectedStream?.streamId)}
-                    >
-                      Retry
-                    </button>
-                  )}
-                </>
-              )}
+      {/* This wrapper (and everything below it, including the mpv video via
+          Player) stays mounted even while Settings is open — Settings is
+          rendered as an overlay above it, not a replacement, because the mpv
+          video is a native child window that paints over any HTML in its
+          rectangle regardless of z-index. display:none here is what actually
+          collapses that rectangle to 0×0 (via Player's ResizeObserver), which
+          is the only thing that keeps Settings from being painted over. */}
+      <div style={{ display: settingsOpen ? 'none' : 'contents' }}>
+        {config && (
+        <>
+        {!theaterMode && (
+          <header className="app-header">
+            <div className="app-title">
+              <span className="app-title-mark">▶</span> IPTV
             </div>
+            <nav className="app-tabs">
+              <button
+                className={`app-tab${view === 'live' ? ' active' : ''}`}
+                onClick={() => setView('live')}
+              >
+                Live TV
+              </button>
+              <button
+                className={`app-tab${view === 'guide' ? ' active' : ''}`}
+                onClick={() => setView('guide')}
+              >
+                Guide
+              </button>
+            </nav>
+            <div className="app-header-spacer" />
+            {view === 'live' && (
+              <button
+                className="app-icon-btn"
+                title={sidebarVisible ? 'Hide channel sidebar' : 'Show channel sidebar'}
+                onClick={() => setSidebarVisible((v) => !v)}
+              >
+                ☰
+              </button>
+            )}
+            <button
+              className="app-icon-btn"
+              title={isFullScreen ? 'Exit full screen (F11)' : 'Full screen (F11)'}
+              onClick={() => window.app.toggleFullScreen()}
+            >
+              {isFullScreen ? '⤡' : '⤢'}
+            </button>
+            <button className="app-settings-btn" onClick={() => setShowSettings(true)}>
+              Settings
+            </button>
+          </header>
+        )}
+
+        {/* The live view stays mounted while the guide is open: the mpv video
+            surface is a native child window, so hiding its placeholder (display:
+            none) collapses it to 0×0 via Player's ResizeObserver while playback
+            (audio) continues. */}
+        <div className="app-live" style={{ display: view === 'live' ? 'flex' : 'none' }}>
+          {sidebarVisible && !theaterMode && (
+            <aside className="app-sidebar">
+              <ChannelList
+                channels={displayChannels}
+                totalCount={channels.length}
+                loading={channelsLoading}
+                error={channelsError}
+                selectedStreamId={selectedStream?.streamId ?? null}
+                onSelect={tune}
+                favorites={favorites}
+                onToggleFavorite={toggleFavorite}
+                favoritesOnly={favoritesOnly}
+                onToggleFavoritesOnly={() => setFavoritesOnly((v) => !v)}
+                filterText={channelFilter}
+                onFilterTextChange={setChannelFilter}
+                onHideChannel={hideChannel}
+              />
+            </aside>
           )}
-          <div className="app-player-surface">
-            <Player />
+          <div className="app-player-col">
+            {selectedStream && !theaterMode && (
+              <div className="player-toolbar">
+                <NowNextBar stream={selectedStream} />
+                <PlayerStats streamKey={selectedStream.streamId} />
+              </div>
+            )}
+            {showFsHint && (
+              <div className="fullscreen-hint">Press F11 or Esc to exit full screen</div>
+            )}
+            {/* Playback state must render OUTSIDE the player surface — the mpv
+                video is a native child window that paints over any HTML in
+                that rectangle. */}
+            {playbackStatus && playbackStatus.state !== 'idle' && playbackStatus.state !== 'playing' && (
+              <div
+                className={`playback-bar${playbackStatus.state !== 'loading' ? ' playback-bar-error' : ''}`}
+              >
+                {playbackStatus.state === 'loading' ? (
+                  <span>Tuning {selectedStream ? selectedStream.name : ''}…</span>
+                ) : playbackStatus.state === 'wedged' ? (
+                  <span className="playback-bar-msg">
+                    {playbackStatus.message} This channel has been hidden.
+                  </span>
+                ) : (
+                  <>
+                    <span className="playback-bar-msg">
+                      {playbackStatus.message ?? 'Playback failed'}
+                    </span>
+                    {streamUrl && (
+                      <button
+                        onClick={() => window.playback.play(streamUrl, selectedStream?.streamId)}
+                      >
+                        Retry
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+            <div className="app-player-surface">
+              <Player />
+            </div>
           </div>
         </div>
-      </div>
 
-      {view === 'guide' && (
-        <div className="app-guide">
-          <EpgGrid
-            config={config}
-            channels={visibleChannels}
-            hiddenEpgChannelIds={hiddenEpgChannelIds}
-            tunedStreamId={selectedStream?.streamId ?? null}
-            onTune={tune}
-          />
-        </div>
-      )}
+        {view === 'guide' && (
+          <div className="app-guide">
+            <EpgGrid
+              config={config}
+              channels={visibleChannels}
+              hiddenEpgChannelIds={hiddenEpgChannelIds}
+              tunedStreamId={selectedStream?.streamId ?? null}
+              onTune={tune}
+            />
+          </div>
+        )}
+        </>
+        )}
+      </div>
     </div>
   )
 }

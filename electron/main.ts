@@ -48,6 +48,7 @@ let player: InstanceType<typeof Mpv> | null = null
 
 function createWindow() {
   win = new BrowserWindow({
+    title: "Skip's IPTV Viewer",
     icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
@@ -64,10 +65,22 @@ function createWindow() {
   // above) silently took them with it. Rebind them directly so dev/debugging still
   // works with no menu.
   win.webContents.on('before-input-event', (_event, input) => {
-    if (input.type !== 'keyDown' || !input.control) return
+    if (input.type !== 'keyDown') return
+    if (input.key === 'F11') {
+      win?.setFullScreen(!win.isFullScreen())
+      return
+    }
+    if (input.key === 'Escape' && win?.isFullScreen()) {
+      win.setFullScreen(false)
+      return
+    }
+    if (!input.control) return
     if (input.key.toLowerCase() === 'r') win?.webContents.reload()
     else if (input.key.toLowerCase() === 'i' && input.shift) win?.webContents.toggleDevTools()
   })
+
+  win.on('enter-full-screen', () => win?.webContents.send('app:fullscreen-changed', true))
+  win.on('leave-full-screen', () => win?.webContents.send('app:fullscreen-changed', false))
 
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL)
@@ -120,6 +133,13 @@ function setupMpv(window: BrowserWindow) {
     return player?.getRawProperty(name) ?? null
   })
 }
+
+ipcMain.handle('app:toggleFullScreen', () => {
+  win?.setFullScreen(!win.isFullScreen())
+  return win?.isFullScreen() ?? false
+})
+
+ipcMain.handle('app:isFullScreen', () => win?.isFullScreen() ?? false)
 
 ipcMain.handle('playback:play', (_event, url: string, streamId?: number) => {
   playback.play(url, streamId)

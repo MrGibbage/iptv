@@ -41,6 +41,17 @@ contextBridge.exposeInMainWorld('mpv', {
   },
 })
 
+// --------- Expose app-shell controls (full screen) to the Renderer process ---------
+contextBridge.exposeInMainWorld('app', {
+  toggleFullScreen: () => ipcRenderer.invoke('app:toggleFullScreen') as Promise<boolean>,
+  isFullScreen: () => ipcRenderer.invoke('app:isFullScreen') as Promise<boolean>,
+  onFullScreenChange: (callback: (isFullScreen: boolean) => void) => {
+    const listener = (_event: unknown, isFullScreen: boolean) => callback(isFullScreen)
+    ipcRenderer.on('app:fullscreen-changed', listener)
+    return () => ipcRenderer.removeListener('app:fullscreen-changed', listener)
+  },
+})
+
 // --------- Expose Xtream API + settings persistence to the Renderer process ---------
 contextBridge.exposeInMainWorld('xtream', {
   testConnection: (config: XtreamConfig) => ipcRenderer.invoke('xtream:testConnection', config),

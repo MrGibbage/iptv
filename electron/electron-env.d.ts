@@ -24,6 +24,11 @@ declare namespace NodeJS {
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
   ipcRenderer: import('electron').IpcRenderer
+  app: {
+    toggleFullScreen: () => Promise<boolean>
+    isFullScreen: () => Promise<boolean>
+    onFullScreenChange: (callback: (isFullScreen: boolean) => void) => () => void
+  }
   mpv: {
     attach: (x: number, y: number, width: number, height: number) => Promise<boolean>
     resize: (x: number, y: number, width: number, height: number) => Promise<void>

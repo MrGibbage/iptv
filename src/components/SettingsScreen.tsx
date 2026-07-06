@@ -116,6 +116,34 @@ function SettingsScreen({
         )}
       </div>
 
+      <div className="settings-card">
+        <details className="shortcuts-details">
+          <summary>Keyboard shortcuts</summary>
+          <div className="shortcuts-list">
+            <div className="shortcuts-row">
+              <span className="shortcuts-keys">↑ / ↓</span>
+              <span>Previous / next channel</span>
+            </div>
+            <div className="shortcuts-row">
+              <span className="shortcuts-keys">Backspace</span>
+              <span>Return to the previously tuned channel</span>
+            </div>
+            <div className="shortcuts-row">
+              <span className="shortcuts-keys">F11</span>
+              <span>Toggle full screen (hides all UI on the Live tab — only the video remains)</span>
+            </div>
+            <div className="shortcuts-row">
+              <span className="shortcuts-keys">Esc</span>
+              <span>Exit full screen</span>
+            </div>
+            <div className="shortcuts-row">
+              <span className="shortcuts-keys">Tab</span>
+              <span>Jump to the guide and back (while full screen)</span>
+            </div>
+          </div>
+        </details>
+      </div>
+
       {/* Only shown once channels have actually loaded (not on first run). No
           preview/playback here by design — reviewing a bad channel is the
           whole point, so nothing on this screen should be able to tune it. */}

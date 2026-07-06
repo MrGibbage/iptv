@@ -1,9 +1,30 @@
 /* App shell */
 .app-root {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100vh;
   background: var(--bg-0);
+}
+
+.fullscreen-hint {
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  text-align: center;
+  color: var(--text-dim);
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border);
+  animation: fullscreen-hint-fade 3s ease forwards;
+}
+
+@keyframes fullscreen-hint-fade {
+  0%,
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 
 .app-header {
@@ -61,6 +82,12 @@
   flex: 1;
 }
 
+.app-icon-btn {
+  padding: 5px 10px;
+  font-size: 1rem;
+  line-height: 1;
+}
+
 .app-live {
   flex: 1;
   min-height: 0;
@@ -86,6 +113,70 @@
 .app-player-surface {
   flex: 1;
   min-height: 0;
+}
+
+.player-toolbar {
+  display: flex;
+  align-items: stretch;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.player-toolbar .nownext-bar {
+  flex: 1;
+  min-width: 0;
+  border-bottom: none;
+}
+
+.player-toolbar .app-icon-btn {
+  margin: 4px 8px;
+  align-self: center;
+}
+
+.stats-panel {
+  padding: 10px 14px;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+
+.stats-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.stats-panel-header button {
+  padding: 3px 10px;
+  font-size: 0.78rem;
+}
+
+.stats-panel-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 16px;
+  row-gap: 4px;
+  margin: 0;
+}
+
+.stats-panel-row {
+  display: contents;
+}
+
+.stats-panel-row dt {
+  color: var(--text-dim);
+}
+
+.stats-panel-row dd {
+  margin: 0;
+  color: var(--text);
+}
+
+.stats-panel-empty {
+  margin: 0;
+  color: var(--text-dim);
 }
 
 .playback-bar {
@@ -276,7 +367,9 @@
 
 /* Settings */
 .settings-wrap {
-  height: 100vh;
+  position: absolute;
+  inset: 0;
+  z-index: 5;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -385,4 +478,44 @@
 
 .settings-message.err {
   color: var(--danger);
+}
+
+.shortcuts-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.shortcuts-details summary:hover {
+  color: var(--accent);
+}
+
+.shortcuts-list {
+  margin-top: 14px;
+}
+
+.shortcuts-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.shortcuts-row:last-child {
+  border-bottom: none;
+}
+
+.shortcuts-keys {
+  flex-shrink: 0;
+  width: 90px;
+  font-family: 'Cascadia Code', Consolas, monospace;
+  font-size: 0.8rem;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  text-align: center;
 }

@@ -6,11 +6,11 @@ it's the thing all the existing apps get wrong.
 
 **Status:** Build order step 3 complete (2026-07-05), plus playback error-handling
 hardening (2026-07-06) added after real-world testing surfaced a channel that could
-freeze mpv's core and wedge the whole app. A small App shell backlog (full-screen
-toggle, custom window title, sidebar hide/show, keyboard-shortcuts reference in
-Settings, "stats for nerds" playback info panel) was requested 2026-07-06 and is
-documented under "App shell / Windows feel" below, not yet implemented. Next:
-VOD/series browser (step 4), then that backlog.
+freeze mpv's core and wedge the whole app. The App shell backlog (full-screen toggle,
+custom window title, sidebar hide/show, keyboard-shortcuts reference in Settings,
+"stats for nerds" playback info panel) requested 2026-07-06 is now implemented and
+verified against a real account — details under "App shell / Windows feel" below.
+Next: build-order step 4, the VOD/series browser.
 **Project home:** `C:\Users\skip\projects\iptv` on ganymede. Develop with the native
 Windows Claude binary from PowerShell — not WSL; Node tooling across /mnt/c is slow. If you detect the user running claude with any linux binary, remind the user to exit and use the Windows binanry in PowerShell, started from the project directory.
 This is Skip's first TypeScript project.
@@ -87,26 +87,38 @@ from day one, and treat the provider URL itself as a secret (it embeds the accou
   notifications, DPI scaling; packaged as a normal installer (.exe). Ability to view video in full screen.
 - Known gap: Windows SMTC media controls (taskbar media overlay) need extra native
   wiring — nice-to-have, not v1-blocking.
-- **Backlog, requested 2026-07-06 (documented now, not yet implemented):**
-  1. **Full-screen toggle** — maximize only maximizes the window today; need an actual
-     full-screen mode (`win.setFullScreen()`/F11-style). Skip doesn't care whether the
-     control lives in the Windows title bar area or the app's own client area.
-  2. **Custom window title** — show "Skip's IPTV Viewer" in the Windows title bar
-     instead of the scaffold's default "Vite + React + TS" (`BrowserWindow({ title: ... })`
-     and/or `<title>` in `index.html`).
-  3. **Toggle the channel sidebar** — a way to hide/show the Live TV channel list while
-     windowed (not full-screen), for a more theater-like view without losing the sidebar
-     permanently.
-  4. **Keyboard shortcuts reference in Settings** — a small, collapsed-by-default section
-     listing the app's keyboard shortcuts (↑/↓ zap, Backspace previous channel, etc.) so
-     Skip can look them up when he forgets. Read-only — no rebinding UI needed.
-  5. **"Stats for nerds" (requested 2026-07-06)** — an info icon near the player that
-     shows current playback stats: bitrate, video resolution, video/audio codec, and
-     similar mpv-exposed properties (fps, hwdec state, etc.). Likely pulled from mpv
-     properties (`video-bitrate`, `audio-bitrate`, `video-params`, `hwdec-current`, …)
-     via the existing `getProperty` bridge — but per `electron/playback.ts`'s hard-won
-     lesson, that call is synchronous and must not be polled; only read on demand when
-     the user opens the panel, never on a timer.
+- **Backlog requested 2026-07-06, implemented and verified against a real account
+  2026-07-06:**
+  1. **Full-screen toggle** — F11 (bound in the main process) or a header button
+     (`⤢`/`⤡`) call `win.setFullScreen()`. Full screen on the Live tab is "theater
+     mode": the header, sidebar, and now/next+stats toolbar all hide (only the video
+     remains), with a brief "Press F11 or Esc to exit full screen" hint on entry since
+     there's otherwise no on-screen way back. Esc also exits (bound alongside F11).
+     `Tab` jumps to the Guide and back while full screen (bringing the header back with
+     it), scoped to full-screen-only so it doesn't steal normal Tab focus-cycling
+     elsewhere. Theater mode also drives mpv's own `cursor-autohide` property
+     (`'always'` on, `'no'` off) to hide the mouse over the video — a CSS `cursor` rule
+     can't reach it, since mpv renders into a native child window that draws its own
+     cursor independent of the page underneath.
+  2. **Custom window title** — "Skip's IPTV Viewer" via `BrowserWindow({ title })` and
+     `<title>` in `index.html`.
+  3. **Toggle the channel sidebar** — a header button (`☰`) hides/shows the Live tab's
+     channel list while windowed; keyboard zapping keeps working with it hidden.
+  4. **Keyboard shortcuts reference in Settings** — collapsed-by-default `<details>`
+     section listing zap/Backspace/F11/Esc/Tab. Read-only, no rebinding UI.
+  5. **"Stats for nerds"** — an `ⓘ` button next to the now/next bar fetches mpv
+     properties (video/audio codec, resolution, bitrate, fps, hwdec) via
+     `window.mpv.getProperty` only when the panel is opened (plus a manual Refresh
+     button) — never polled, per `electron/playback.ts`'s synchronous-call lesson.
+  - **Bug found and fixed during this work:** opening Settings used to unmount the
+    entire live view, including the mpv video's native child window — but nothing
+    told mpv to shrink that window first, so it kept painting at its last on-screen
+    rectangle, landing on top of the Settings screen (a native child window always
+    paints over Chromium content in its rectangle regardless of CSS z-index). Fixed by
+    keeping the live view mounted underneath Settings at all times (Settings now
+    renders as an absolutely-positioned overlay instead of replacing the tree), reusing
+    the same "collapse to 0×0 via `display:none`" technique already proven for the
+    Guide tab to actually shrink the native mpv window down to nothing first.
 
 ## v2 Scope (Recordings)
 
