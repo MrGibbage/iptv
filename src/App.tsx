@@ -515,7 +515,11 @@ function App() {
             {view === 'live' && selectedStream && !theaterMode && (
               <div className="player-toolbar">
                 <NowNextBar stream={selectedStream} />
-                <PlayerStats streamKey={selectedStream.streamId} />
+                <PlayerStats
+                  streamKey={selectedStream.streamId}
+                  channelNumber={selectedStream.num}
+                  streamUrl={streamUrl}
+                />
               </div>
             )}
             {(view === 'vod' || view === 'series') && playingMedia && !theaterMode && (

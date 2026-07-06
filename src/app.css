@@ -138,6 +138,16 @@
   background: var(--bg-1);
   border-bottom: 1px solid var(--border);
   font-size: 0.82rem;
+  /* The now/next bar (flex:1) fills the empty left space; the panel takes a
+     fixed area on the right, wide enough for the (long) stream URL to wrap
+     into a couple of lines rather than blowing the toolbar out. */
+  max-width: 460px;
+}
+
+.stats-panel-url {
+  word-break: break-all;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.76rem;
 }
 
 .stats-panel-header {

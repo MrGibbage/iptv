@@ -26,6 +26,8 @@ export interface LiveCategory {
 
 export interface LiveStream {
   streamId: number
+  /** The provider's channel number (Xtream `num`), shown in the stats panel. */
+  num: number
   name: string
   streamIcon: string
   categoryId: string
@@ -116,6 +118,7 @@ export async function getLiveStreams(config: XtreamConfig, categoryId?: string):
   if (!Array.isArray(raw)) return []
   return raw.map((entry: Record<string, unknown>) => ({
     streamId: Number(entry.stream_id),
+    num: Number(entry.num ?? 0),
     name: String(entry.name ?? ''),
     streamIcon: String(entry.stream_icon ?? ''),
     categoryId: String(entry.category_id ?? ''),

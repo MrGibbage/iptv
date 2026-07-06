@@ -42,9 +42,13 @@ async function fetchStats(): Promise<StatRow[]> {
 interface PlayerStatsProps {
   // Any change (including going idle) closes the panel and drops stale stats.
   streamKey: number | null
+  // App-level facts about the current channel (not mpv properties): shown
+  // immediately, without waiting on / needing a getRawProperty round-trip.
+  channelNumber?: number
+  streamUrl?: string | null
 }
 
-function PlayerStats({ streamKey }: PlayerStatsProps) {
+function PlayerStats({ streamKey, channelNumber, streamUrl }: PlayerStatsProps) {
   const [open, setOpen] = useState(false)
   const [stats, setStats] = useState<StatRow[] | null>(null)
   const [loading, setLoading] = useState(false)
@@ -85,18 +89,29 @@ function PlayerStats({ streamKey }: PlayerStatsProps) {
               {loading ? 'Refreshing…' : 'Refresh'}
             </button>
           </div>
-          {stats ? (
-            <dl className="stats-panel-list">
-              {stats.map((row) => (
-                <div key={row.label} className="stats-panel-row">
-                  <dt>{row.label}</dt>
-                  <dd>{row.value}</dd>
-                </div>
-              ))}
-            </dl>
-          ) : (
-            <p className="stats-panel-empty">Loading…</p>
-          )}
+          <dl className="stats-panel-list">
+            {channelNumber != null && channelNumber > 0 && (
+              <div className="stats-panel-row">
+                <dt>Channel #</dt>
+                <dd>{channelNumber}</dd>
+              </div>
+            )}
+            {streamUrl && (
+              <div className="stats-panel-row">
+                <dt>Stream URL</dt>
+                <dd className="stats-panel-url">{streamUrl}</dd>
+              </div>
+            )}
+            {stats
+              ? stats.map((row) => (
+                  <div key={row.label} className="stats-panel-row">
+                    <dt>{row.label}</dt>
+                    <dd>{row.value}</dd>
+                  </div>
+                ))
+              : null}
+          </dl>
+          {!stats && <p className="stats-panel-empty">Loading…</p>}
         </div>
       )}
     </>
