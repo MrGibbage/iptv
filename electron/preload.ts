@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('mpv', {
   setProperty: (name: string, value: string | number | boolean) =>
     ipcRenderer.invoke('mpv:setProperty', name, value),
   getProperty: (name: string) => ipcRenderer.invoke('mpv:getProperty', name),
+  setCursorVisible: (visible: boolean) => ipcRenderer.invoke('mpv:setCursorVisible', visible),
   onEvent: (callback: () => void) => {
     const listener = () => callback()
     ipcRenderer.on('mpv:event', listener)
@@ -60,6 +61,19 @@ contextBridge.exposeInMainWorld('xtream', {
     ipcRenderer.invoke('xtream:getLiveStreams', config, categoryId),
   buildLiveStreamUrl: (config: XtreamConfig, streamId: number) =>
     ipcRenderer.invoke('xtream:buildLiveStreamUrl', config, streamId),
+  getVodCategories: (config: XtreamConfig) => ipcRenderer.invoke('xtream:getVodCategories', config),
+  getVodStreams: (config: XtreamConfig, categoryId?: string) =>
+    ipcRenderer.invoke('xtream:getVodStreams', config, categoryId),
+  getVodInfo: (config: XtreamConfig, vodId: number) => ipcRenderer.invoke('xtream:getVodInfo', config, vodId),
+  buildVodStreamUrl: (config: XtreamConfig, streamId: number, extension: string) =>
+    ipcRenderer.invoke('xtream:buildVodStreamUrl', config, streamId, extension),
+  getSeriesCategories: (config: XtreamConfig) => ipcRenderer.invoke('xtream:getSeriesCategories', config),
+  getSeriesList: (config: XtreamConfig, categoryId?: string) =>
+    ipcRenderer.invoke('xtream:getSeriesList', config, categoryId),
+  getSeriesInfo: (config: XtreamConfig, seriesId: number) =>
+    ipcRenderer.invoke('xtream:getSeriesInfo', config, seriesId),
+  buildSeriesStreamUrl: (config: XtreamConfig, episodeId: string, extension: string) =>
+    ipcRenderer.invoke('xtream:buildSeriesStreamUrl', config, episodeId, extension),
 })
 
 contextBridge.exposeInMainWorld('settings', {
@@ -89,6 +103,13 @@ contextBridge.exposeInMainWorld('playback', {
 contextBridge.exposeInMainWorld('prefs', {
   load: () => ipcRenderer.invoke('prefs:load'),
   save: (prefs: import('./prefs-store').Prefs) => ipcRenderer.invoke('prefs:save', prefs),
+})
+
+// --------- Expose resume-position tracking (VOD/series) ---------
+contextBridge.exposeInMainWorld('progress', {
+  load: () => ipcRenderer.invoke('progress:load'),
+  save: (key: string, progress: import('./progress-store').WatchProgress) =>
+    ipcRenderer.invoke('progress:save', key, progress),
 })
 
 // --------- Expose the EPG cache to the Renderer process ---------

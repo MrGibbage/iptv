@@ -6,6 +6,7 @@ import type { XtreamConfig } from './xtream'
 import * as xtream from './xtream'
 import * as settingsStore from './settings-store'
 import * as prefsStore from './prefs-store'
+import * as progressStore from './progress-store'
 import * as epg from './epg'
 import * as epgDb from './epg-db'
 import * as playback from './playback'
@@ -132,6 +133,10 @@ function setupMpv(window: BrowserWindow) {
   ipcMain.handle('mpv:getProperty', (_event, name: string) => {
     return player?.getRawProperty(name) ?? null
   })
+
+  ipcMain.handle('mpv:setCursorVisible', (_event, visible: boolean) => {
+    player?.setCursorVisible(visible)
+  })
 }
 
 ipcMain.handle('app:toggleFullScreen', () => {
@@ -165,6 +170,44 @@ ipcMain.handle('xtream:buildLiveStreamUrl', (_event, config: XtreamConfig, strea
   return xtream.buildLiveStreamUrl(config, streamId)
 })
 
+ipcMain.handle('xtream:getVodCategories', (_event, config: XtreamConfig) => {
+  return xtream.getVodCategories(config)
+})
+
+ipcMain.handle('xtream:getVodStreams', (_event, config: XtreamConfig, categoryId?: string) => {
+  return xtream.getVodStreams(config, categoryId)
+})
+
+ipcMain.handle('xtream:getVodInfo', (_event, config: XtreamConfig, vodId: number) => {
+  return xtream.getVodInfo(config, vodId)
+})
+
+ipcMain.handle(
+  'xtream:buildVodStreamUrl',
+  (_event, config: XtreamConfig, streamId: number, extension: string) => {
+    return xtream.buildVodStreamUrl(config, streamId, extension)
+  },
+)
+
+ipcMain.handle('xtream:getSeriesCategories', (_event, config: XtreamConfig) => {
+  return xtream.getSeriesCategories(config)
+})
+
+ipcMain.handle('xtream:getSeriesList', (_event, config: XtreamConfig, categoryId?: string) => {
+  return xtream.getSeriesList(config, categoryId)
+})
+
+ipcMain.handle('xtream:getSeriesInfo', (_event, config: XtreamConfig, seriesId: number) => {
+  return xtream.getSeriesInfo(config, seriesId)
+})
+
+ipcMain.handle(
+  'xtream:buildSeriesStreamUrl',
+  (_event, config: XtreamConfig, episodeId: string, extension: string) => {
+    return xtream.buildSeriesStreamUrl(config, episodeId, extension)
+  },
+)
+
 ipcMain.handle('settings:load', () => {
   return settingsStore.loadConfig()
 })
@@ -179,6 +222,14 @@ ipcMain.handle('prefs:load', () => {
 
 ipcMain.handle('prefs:save', (_event, prefs: prefsStore.Prefs) => {
   return prefsStore.savePrefs(prefs)
+})
+
+ipcMain.handle('progress:load', () => {
+  return progressStore.loadProgress()
+})
+
+ipcMain.handle('progress:save', (_event, key: string, progress: progressStore.WatchProgress) => {
+  return progressStore.saveProgress(key, progress)
 })
 
 ipcMain.handle('epg:refresh', (_event, config: XtreamConfig, force?: boolean) => {

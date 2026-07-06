@@ -10,7 +10,12 @@ freeze mpv's core and wedge the whole app. The App shell backlog (full-screen to
 custom window title, sidebar hide/show, keyboard-shortcuts reference in Settings,
 "stats for nerds" playback info panel) requested 2026-07-06 is now implemented and
 verified against a real account — details under "App shell / Windows feel" below.
-Next: build-order step 4, the VOD/series browser.
+Build-order step 4 (VOD/series browser) is now fully implemented (2026-07-06): VOD
+browsing/playback/resume verified against a real account; series browsing (seasons/
+episodes) built the same session, pending its own manual verification pass. Next:
+build-order step 5, packaging/installer — plus two small backlog items requested
+2026-07-06 (a VOD/series time scrubber, and idle-based cursor show/hide instead of the
+current flat hide) noted under "VOD & Series" and "App shell / Windows feel" below.
 **Project home:** `C:\Users\skip\projects\iptv` on ganymede. Develop with the native
 Windows Claude binary from PowerShell — not WSL; Node tooling across /mnt/c is slow. If you detect the user running claude with any linux binary, remind the user to exit and use the Windows binanry in PowerShell, started from the project directory.
 This is Skip's first TypeScript project.
@@ -81,6 +86,41 @@ from day one, and treat the provider URL itself as a secret (it embeds the accou
 - Netflix-style browser over Xtream VOD/series categories: posters, ratings, seasons/
   episodes. Mostly presentation work — the API already returns clean structured data.
 - Resume-position tracking stored locally.
+- **VOD chunk implemented and verified against a real account 2026-07-06:** a "Movies" tab
+  (`electron/xtream.ts`: `getVodCategories`/`getVodStreams`/`getVodInfo`/
+  `buildVodStreamUrl`) shows a category sidebar + poster grid
+  (`src/components/VodBrowser.tsx`); clicking a poster opens a detail overlay (plot,
+  cast, director, genre, rating, release year) with Play/Resume buttons. Playback
+  reuses the single mpv instance already used for live TV — the same "loadfile
+  replace" pattern, no second player. A movie's playback position is saved every 20s
+  while playing (`electron/progress-store.ts`, `progress.json` in userData, keyed
+  `vod:<streamId>`) and cleared once a title has been watched to near the end, so
+  finished movies fall back to a plain Play button instead of Resume. The browser
+  itself stays mounted (display:none, not unmounted) while a movie plays, so category/
+  scroll/filter state survives returning via "Back to Movies" — same technique already
+  used to keep the Live view's mpv window alive under Settings/Guide.
+- **Series chunk implemented 2026-07-06, pending manual verification:** a "TV Shows"
+  tab (`electron/xtream.ts`: `getSeriesCategories`/`getSeriesList`/`getSeriesInfo`/
+  `buildSeriesStreamUrl`) mirrors the Movies tab's category sidebar + poster grid
+  (`src/components/SeriesBrowser.tsx`, reusing the VOD browser's CSS — series posters
+  look the same as movie posters). Its detail overlay adds a season-tab strip and an
+  episode list per season, each row with its own Play/Resume (progress keyed
+  `ep:<episodeId>` instead of `vod:<streamId>`, same `progress-store.ts`).
+  `get_series_info`'s `episodes` map is keyed by season number as a string, with a
+  separate `seasons` array carrying just the display names — parsed by deriving season
+  numbers from the episode map's keys and cross-referencing names from `seasons` where
+  present, since some providers omit one or the other.
+- **Refactor alongside the series chunk:** `App.tsx`'s `playingVod` state (and its
+  build-url/play/seek/progress-saving effects) was generalized into a `PlayingMedia`
+  union (`{kind:'vod'}` | `{kind:'episode'}`) shared by both Movies and TV Shows,
+  rather than duplicating the same four effects a third time — theater mode, resume
+  seeking, and periodic progress-saving are now implemented once for any non-live
+  media instead of per-kind.
+- **Backlog, requested 2026-07-06:** a time scrubber for VOD/series playback —
+  seek bar with current position/duration, click/drag to seek. Not in the original
+  plan (that only called for resume-position tracking, not an on-screen seek UI), but
+  a natural fit now that progress data already exists — depends on the mouse-visibility
+  backlog item below, since a scrubber needs the cursor available to interact with it.
 
 ### App shell / Windows feel
 - Custom title bar (VS Code style) or native chrome; taskbar/Alt-Tab, tray, native
@@ -90,16 +130,26 @@ from day one, and treat the provider URL itself as a secret (it embeds the accou
 - **Backlog requested 2026-07-06, implemented and verified against a real account
   2026-07-06:**
   1. **Full-screen toggle** — F11 (bound in the main process) or a header button
-     (`⤢`/`⤡`) call `win.setFullScreen()`. Full screen on the Live tab is "theater
-     mode": the header, sidebar, and now/next+stats toolbar all hide (only the video
-     remains), with a brief "Press F11 or Esc to exit full screen" hint on entry since
-     there's otherwise no on-screen way back. Esc also exits (bound alongside F11).
-     `Tab` jumps to the Guide and back while full screen (bringing the header back with
-     it), scoped to full-screen-only so it doesn't steal normal Tab focus-cycling
-     elsewhere. Theater mode also drives mpv's own `cursor-autohide` property
-     (`'always'` on, `'no'` off) to hide the mouse over the video — a CSS `cursor` rule
-     can't reach it, since mpv renders into a native child window that draws its own
-     cursor independent of the page underneath.
+     (`⤢`/`⤡`) call `win.setFullScreen()`. Full screen on the Live tab (and on the
+     Movies tab while a title is playing) is "theater mode": the header, sidebar, and
+     now/next+stats/now-playing toolbar all hide (only the video remains), with a brief
+     "Press F11 or Esc to exit full screen" hint on entry since there's otherwise no
+     on-screen way back. Esc also exits (bound alongside F11). `Tab` jumps to the Guide
+     and back while full screen (bringing the header back with it), scoped to
+     full-screen-only (and inert while a movie is playing, so it can't yank the user out
+     of theater mode into Guide/Live) so it doesn't steal normal Tab focus-cycling
+     elsewhere. Theater mode also hides the mouse cursor — **not** via mpv's own
+     `cursor-autohide` property (tried first, turned out to be a dead end: mpv's render
+     target is a bare `Static` window handed to it purely as a `wid`, nothing subclasses
+     its wndproc to forward `WM_MOUSEMOVE`, so mpv never sees cursor motion over it and
+     its autohide idle timer never fires — this was a silent no-op the whole time, per
+     Skip's testing 2026-07-06). Fixed properly by patching `electron-libmpv` itself: a
+     new native `setCursorVisible()` method calls Win32 `ShowCursor` directly (guarded
+     against double-calls so the counter can't drift out of balance), exposed through
+     `window.mpv.setCursorVisible`. Patch lives in
+     `patches/electron-libmpv+1.1.0.patch` (regenerated via `npx patch-package
+     electron-libmpv` after editing `node_modules/electron-libmpv` directly, then
+     `npx electron-rebuild -f -w electron-libmpv` to rebuild the native binary).
   2. **Custom window title** — "Skip's IPTV Viewer" via `BrowserWindow({ title })` and
      `<title>` in `index.html`.
   3. **Toggle the channel sidebar** — a header button (`☰`) hides/shows the Live tab's
@@ -119,6 +169,14 @@ from day one, and treat the provider URL itself as a secret (it embeds the accou
     renders as an absolutely-positioned overlay instead of replacing the tree), reusing
     the same "collapse to 0×0 via `display:none`" technique already proven for the
     Guide tab to actually shrink the native mpv window down to nothing first.
+- **Backlog, requested 2026-07-06:** theater mode currently hides the mouse cursor for
+  the whole time full screen is on. Change to an idle-based show/hide instead: cursor
+  reappears on mouse movement, then auto-hides again after ~5s of no movement — needed
+  so a VOD/series time scrubber (see "VOD & Series" above) is actually reachable with
+  the mouse while still keeping playback distraction-free when the viewer isn't
+  interacting. `window.mpv.setCursorVisible` (added 2026-07-06) already does the actual
+  hide/show; this just needs a movement listener + debounce timer driving it instead of
+  the current flat `!theaterMode` toggle.
 
 ## v2 Scope (Recordings)
 
@@ -151,7 +209,8 @@ from day one, and treat the provider URL itself as a secret (it embeds the accou
    readable while a refresh runs (today the replace happens in-place inside the read
    connection's transaction, so mid-refresh guide browsing can see a partial grid), and
    a friendlier guide empty state while a first/stale refresh is in flight.
-4. VOD/series browser.
+4. VOD/series browser — implemented 2026-07-06 (VOD verified against a real account;
+   series pending its own verification pass).
 5. Packaging/installer.
 6. v2: recording service on docker-server + app integration.
 
@@ -276,8 +335,21 @@ Playback error-handling hardening landed 2026-07-06, prompted by a real provider
   (dev mode's hot-reload supervisor doesn't survive an externally-killed child, which is
   *part of* why the kill-and-relaunch approach was abandoned above).
 
+- **VOD browsing, playback, and resume tracking implemented 2026-07-06** (pending manual
+  verification against a real account): see "VOD & Series" above for the full shape.
+  The notable design decision was reusing the existing single mpv instance and its
+  "loadfile replace" pattern rather than standing up a second player — a movie's Play
+  button works exactly like tuning a live channel does, just with a VOD URL instead of
+  a live one, and the same collapse-to-0×0-via-display:none technique keeps the poster
+  grid's DOM alive underneath the player instead of unmounting it.
+
+- **Series browsing implemented 2026-07-06** (pending manual verification): season/
+  episode drill-down reusing the VOD browser's poster grid and the same resume-progress
+  store. Prompted a small refactor — `App.tsx`'s VOD-only `playingVod` state became a
+  `PlayingMedia` union covering both movies and episodes, so theater mode, resume-seek,
+  and progress-saving are each implemented once instead of duplicated per media kind.
+
 Key choices unchanged from the original plan: Electron + libmpv, Xtream Codes as the only
 provider format, EPG grid quality as the defining feature, recordings deferred to v2
 running server-side on docker-server (never client-side). Next concrete action is
-build-order step 4: the VOD/series browser (Netflix-style category/poster browsing over
-the Xtream VOD API, resume-position tracking).
+build-order step 5: packaging/installer.

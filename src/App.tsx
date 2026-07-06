@@ -1,15 +1,34 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { XtreamConfig, LiveStream } from '../electron/xtream'
+import type { XtreamConfig, LiveStream, VodStream, SeriesEpisode } from '../electron/xtream'
 import type { PlaybackStatus } from '../electron/playback'
+import type { ProgressMap } from '../electron/progress-store'
 import SettingsScreen from './components/SettingsScreen'
 import ChannelList from './components/ChannelList'
 import Player from './components/Player'
 import EpgGrid from './components/EpgGrid'
 import NowNextBar from './components/NowNextBar'
 import PlayerStats from './components/PlayerStats'
+import VodBrowser from './components/VodBrowser'
+import SeriesBrowser from './components/SeriesBrowser'
 import './app.css'
 
-type View = 'live' | 'guide'
+type View = 'live' | 'guide' | 'vod' | 'series'
+
+// A movie or an episode — anything that isn't a live channel but shares the
+// same single mpv instance, resume-tracking, and theater-mode behavior. Kept
+// as one union (rather than separate vod/episode state) so those behaviors
+// are implemented once instead of duplicated per media kind.
+type PlayingMedia = { kind: 'vod'; item: VodStream } | { kind: 'episode'; item: SeriesEpisode; seriesName: string }
+
+function mediaProgressKey(media: PlayingMedia): string {
+  return media.kind === 'vod' ? `vod:${media.item.streamId}` : `ep:${media.item.id}`
+}
+
+function mediaTitle(media: PlayingMedia): string {
+  return media.kind === 'vod' ? media.item.name : `${media.seriesName} — ${media.item.title}`
+}
+
+const PROGRESS_SAVE_INTERVAL_MS = 20_000
 
 function App() {
   const [config, setConfig] = useState<XtreamConfig | null>(null)
@@ -31,8 +50,13 @@ function App() {
   const [isFullScreen, setIsFullScreen] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [showFsHint, setShowFsHint] = useState(false)
+  const [playingMedia, setPlayingMedia] = useState<PlayingMedia | null>(null)
+  const [mediaStreamUrl, setMediaStreamUrl] = useState<string | null>(null)
+  const [mediaResumeSecs, setMediaResumeSecs] = useState(0)
+  const [progressMap, setProgressMap] = useState<ProgressMap>({})
   const lastStreamIdRef = useRef<number | null>(null)
   const resumedRef = useRef(false)
+  const mediaSeekedRef = useRef(false)
 
   const favoritesRef = useRef(favorites)
   useEffect(() => {
@@ -69,7 +93,8 @@ function App() {
   // and the now/next toolbar disappear so only the video remains, since with
   // them gone there's no on-screen way back, a brief hint is shown for a few
   // seconds pointing at F11/Esc.
-  const theaterMode = isFullScreen && view === 'live'
+  const theaterMode =
+    isFullScreen && (view === 'live' || ((view === 'vod' || view === 'series') && !!playingMedia))
   useEffect(() => {
     if (!theaterMode) {
       setShowFsHint(false)
@@ -119,6 +144,7 @@ function App() {
       lastStreamIdRef.current = p.lastStreamId
       setPrefsLoaded(true)
     })
+    window.progress.load().then(setProgressMap)
   }, [])
 
   useEffect(() => {
@@ -156,6 +182,8 @@ function App() {
       setPreviousStream(selectedStream)
     }
     setSelectedStream(stream)
+    setPlayingMedia(null)
+    setMediaStreamUrl(null)
     setView('live')
   }
 
@@ -167,6 +195,74 @@ function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streamUrl])
+
+  useEffect(() => {
+    if (!config || !playingMedia) return
+    const build =
+      playingMedia.kind === 'vod'
+        ? window.xtream.buildVodStreamUrl(config, playingMedia.item.streamId, playingMedia.item.containerExtension)
+        : window.xtream.buildSeriesStreamUrl(config, playingMedia.item.id, playingMedia.item.containerExtension)
+    build.then(setMediaStreamUrl)
+  }, [config, playingMedia])
+
+  // Mirrors the live-stream play effect above: loadfile replaces whatever mpv
+  // had loaded, so tuning live and playing a movie/episode share the same
+  // single mpv instance without any extra teardown.
+  useEffect(() => {
+    if (mediaStreamUrl && playingMedia) {
+      window.playback.play(mediaStreamUrl, undefined)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mediaStreamUrl])
+
+  const playMedia = (media: PlayingMedia, resumeSecs: number) => {
+    mediaSeekedRef.current = false
+    setMediaResumeSecs(resumeSecs)
+    setPlayingMedia(media)
+  }
+
+  const stopMedia = () => {
+    window.playback.stop()
+    setPlayingMedia(null)
+    setMediaStreamUrl(null)
+  }
+
+  // A resumed movie/episode only seeks once mpv actually starts playing the
+  // file — seeking any earlier would apply to whatever was previously loaded
+  // (or be silently dropped before the file is open).
+  useEffect(() => {
+    if (!playingMedia || mediaResumeSecs <= 0 || mediaSeekedRef.current) return
+    if (playbackStatus?.state === 'playing') {
+      mediaSeekedRef.current = true
+      window.mpv.command('seek', String(mediaResumeSecs), 'absolute')
+    }
+  }, [playbackStatus, playingMedia, mediaResumeSecs])
+
+  // Periodically persist playback position so "Resume" survives navigating
+  // away or quitting — mpv's getProperty blocks the main process while the
+  // core is busy, so this stays a slow interval rather than a tight poll,
+  // the same on-demand-only discipline PlayerStats uses.
+  useEffect(() => {
+    if (!playingMedia || playbackStatus?.state !== 'playing') return
+    const key = mediaProgressKey(playingMedia)
+    const saveNow = () => {
+      Promise.all([window.mpv.getProperty('time-pos'), window.mpv.getProperty('duration')]).then(
+        ([pos, dur]) => {
+          const positionSecs = Number(pos)
+          if (!Number.isFinite(positionSecs)) return
+          const durationSecs = dur && Number.isFinite(Number(dur)) ? Number(dur) : null
+          const entry = { positionSecs, durationSecs, updatedAt: Date.now() }
+          window.progress.save(key, entry)
+          setProgressMap((prev) => ({ ...prev, [key]: entry }))
+        },
+      )
+    }
+    const interval = setInterval(saveNow, PROGRESS_SAVE_INTERVAL_MS)
+    return () => {
+      clearInterval(interval)
+      saveNow()
+    }
+  }, [playingMedia, playbackStatus?.state])
 
   // Channels the user has hidden (froze the app, or manually blocked) never
   // appear anywhere — sidebar, guide grid, or EPG search — regardless of
@@ -255,8 +351,10 @@ function App() {
   // keypress away even with the header (and its Guide tab button) hidden by
   // theater mode. Scoped to full screen only so it doesn't steal normal
   // Tab focus-cycling elsewhere (Settings fields, the guide's own search box).
+  // Inert while a movie/episode is playing — Live/Guide aren't where the user
+  // is, and stealing Tab to bounce them out would be jarring.
   useEffect(() => {
-    if (!isFullScreen) return
+    if (!isFullScreen || playingMedia) return
     const onKey = (e: KeyboardEvent) => {
       if (showSettings || e.key !== 'Tab') return
       const target = e.target as HTMLElement
@@ -266,14 +364,16 @@ function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [isFullScreen, showSettings])
+  }, [isFullScreen, showSettings, playingMedia])
 
   // Theater mode is meant to be distraction-free with nothing to click, so
-  // hide the mouse cursor over the video too — a CSS cursor rule on the React
-  // tree wouldn't reach it, since mpv renders into a native child window that
-  // draws its own cursor independent of the page underneath.
+  // hide the mouse cursor too — a CSS cursor rule on the React tree can't
+  // reach it (mpv renders into a native child window that sits on top of the
+  // page), and mpv's own cursor-autohide can't either: that window is a bare
+  // render target with nothing forwarding mouse input to mpv, so mpv never
+  // sees motion over it. setCursorVisible calls Win32's ShowCursor directly.
   useEffect(() => {
-    window.mpv.setProperty('cursor-autohide', theaterMode ? 'always' : 'no')
+    window.mpv.setCursorVisible(!theaterMode)
   }, [theaterMode])
 
   // Last-channel resume: once channels and prefs are both in, re-tune the
@@ -289,6 +389,12 @@ function App() {
   if (!configLoaded) return null
 
   const settingsOpen = !config || showSettings
+  // Live TV and a playing movie/episode all share the single mpv instance, so
+  // the player surface (and its native child window) stays mounted for any.
+  const playerActive = view === 'live' || ((view === 'vod' || view === 'series') && !!playingMedia)
+  const nowPlayingTitle =
+    (view === 'vod' || view === 'series') && playingMedia ? mediaTitle(playingMedia) : selectedStream?.name
+  const retryUrl = view === 'vod' || view === 'series' ? mediaStreamUrl : streamUrl
 
   return (
     <div className="app-root">
@@ -334,6 +440,18 @@ function App() {
               >
                 Guide
               </button>
+              <button
+                className={`app-tab${view === 'vod' ? ' active' : ''}`}
+                onClick={() => setView('vod')}
+              >
+                Movies
+              </button>
+              <button
+                className={`app-tab${view === 'series' ? ' active' : ''}`}
+                onClick={() => setView('series')}
+              >
+                TV Shows
+              </button>
             </nav>
             <div className="app-header-spacer" />
             {view === 'live' && (
@@ -362,8 +480,8 @@ function App() {
             surface is a native child window, so hiding its placeholder (display:
             none) collapses it to 0×0 via Player's ResizeObserver while playback
             (audio) continues. */}
-        <div className="app-live" style={{ display: view === 'live' ? 'flex' : 'none' }}>
-          {sidebarVisible && !theaterMode && (
+        <div className="app-live" style={{ display: playerActive ? 'flex' : 'none' }}>
+          {view === 'live' && sidebarVisible && !theaterMode && (
             <aside className="app-sidebar">
               <ChannelList
                 channels={displayChannels}
@@ -383,10 +501,18 @@ function App() {
             </aside>
           )}
           <div className="app-player-col">
-            {selectedStream && !theaterMode && (
+            {view === 'live' && selectedStream && !theaterMode && (
               <div className="player-toolbar">
                 <NowNextBar stream={selectedStream} />
                 <PlayerStats streamKey={selectedStream.streamId} />
+              </div>
+            )}
+            {(view === 'vod' || view === 'series') && playingMedia && !theaterMode && (
+              <div className="player-toolbar">
+                <div className="vod-nowplaying">▶ {mediaTitle(playingMedia)}</div>
+                <button className="app-icon-btn" onClick={stopMedia}>
+                  ← Back to {view === 'vod' ? 'Movies' : 'TV Shows'}
+                </button>
               </div>
             )}
             {showFsHint && (
@@ -400,19 +526,21 @@ function App() {
                 className={`playback-bar${playbackStatus.state !== 'loading' ? ' playback-bar-error' : ''}`}
               >
                 {playbackStatus.state === 'loading' ? (
-                  <span>Tuning {selectedStream ? selectedStream.name : ''}…</span>
+                  <span>Tuning {nowPlayingTitle ?? ''}…</span>
                 ) : playbackStatus.state === 'wedged' ? (
                   <span className="playback-bar-msg">
-                    {playbackStatus.message} This channel has been hidden.
+                    {playbackStatus.message} {view === 'live' ? 'This channel has been hidden.' : ''}
                   </span>
                 ) : (
                   <>
                     <span className="playback-bar-msg">
                       {playbackStatus.message ?? 'Playback failed'}
                     </span>
-                    {streamUrl && (
+                    {retryUrl && (
                       <button
-                        onClick={() => window.playback.play(streamUrl, selectedStream?.streamId)}
+                        onClick={() =>
+                          window.playback.play(retryUrl, view === 'live' ? selectedStream?.streamId : undefined)
+                        }
                       >
                         Retry
                       </button>
@@ -438,6 +566,28 @@ function App() {
             />
           </div>
         )}
+
+        {/* Kept mounted (display:none, not unmounted) whenever a movie is
+            playing so browsing state (category, scroll position, filter)
+            survives a trip through the player and back via "Back to Movies". */}
+        <div className="app-vod" style={{ display: view === 'vod' && !playingMedia ? 'flex' : 'none' }}>
+          <VodBrowser
+            config={config}
+            progress={progressMap}
+            onPlay={(item, resumeSecs) => playMedia({ kind: 'vod', item }, resumeSecs)}
+          />
+        </div>
+
+        {/* Same reasoning as app-vod above, for "Back to TV Shows". */}
+        <div className="app-series" style={{ display: view === 'series' && !playingMedia ? 'flex' : 'none' }}>
+          <SeriesBrowser
+            config={config}
+            progress={progressMap}
+            onPlay={(episode, seriesName, resumeSecs) =>
+              playMedia({ kind: 'episode', item: episode, seriesName }, resumeSecs)
+            }
+          />
+        </div>
         </>
         )}
       </div>

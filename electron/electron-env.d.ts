@@ -35,6 +35,7 @@ interface Window {
     command: (...args: string[]) => Promise<number | undefined>
     setProperty: (name: string, value: string | number | boolean) => Promise<number | undefined>
     getProperty: (name: string) => Promise<string | null>
+    setCursorVisible: (visible: boolean) => Promise<void>
     onEvent: (callback: () => void) => () => void
   }
   xtream: {
@@ -52,6 +53,38 @@ interface Window {
       config: import('../electron/xtream').XtreamConfig,
       streamId: number,
     ) => Promise<string>
+    getVodCategories: (
+      config: import('../electron/xtream').XtreamConfig,
+    ) => Promise<import('../electron/xtream').VodCategory[]>
+    getVodStreams: (
+      config: import('../electron/xtream').XtreamConfig,
+      categoryId?: string,
+    ) => Promise<import('../electron/xtream').VodStream[]>
+    getVodInfo: (
+      config: import('../electron/xtream').XtreamConfig,
+      vodId: number,
+    ) => Promise<import('../electron/xtream').VodInfo | null>
+    buildVodStreamUrl: (
+      config: import('../electron/xtream').XtreamConfig,
+      streamId: number,
+      extension: string,
+    ) => Promise<string>
+    getSeriesCategories: (
+      config: import('../electron/xtream').XtreamConfig,
+    ) => Promise<import('../electron/xtream').SeriesCategory[]>
+    getSeriesList: (
+      config: import('../electron/xtream').XtreamConfig,
+      categoryId?: string,
+    ) => Promise<import('../electron/xtream').SeriesListItem[]>
+    getSeriesInfo: (
+      config: import('../electron/xtream').XtreamConfig,
+      seriesId: number,
+    ) => Promise<import('../electron/xtream').SeriesInfo | null>
+    buildSeriesStreamUrl: (
+      config: import('../electron/xtream').XtreamConfig,
+      episodeId: string,
+      extension: string,
+    ) => Promise<string>
   }
   settings: {
     load: () => Promise<import('../electron/xtream').XtreamConfig | null>
@@ -60,6 +93,10 @@ interface Window {
   prefs: {
     load: () => Promise<import('../electron/prefs-store').Prefs>
     save: (prefs: import('../electron/prefs-store').Prefs) => Promise<void>
+  }
+  progress: {
+    load: () => Promise<import('../electron/progress-store').ProgressMap>
+    save: (key: string, progress: import('../electron/progress-store').WatchProgress) => Promise<void>
   }
   playback: {
     play: (url: string, streamId?: number) => Promise<void>

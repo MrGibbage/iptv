@@ -1,5 +1,5 @@
 diff --git a/node_modules/electron-libmpv/index.cc b/node_modules/electron-libmpv/index.cc
-index ab4b745..e87178f 100644
+index ab4b745..1fdeb3d 100644
 --- a/node_modules/electron-libmpv/index.cc
 +++ b/node_modules/electron-libmpv/index.cc
 @@ -4,6 +4,7 @@
@@ -10,9 +10,11 @@ index ab4b745..e87178f 100644
  #include <mpv/client.h>
  
  #ifdef _WIN32
-@@ -24,10 +25,12 @@ class MpvPlayer : public Napi::ObjectWrap<MpvPlayer> {
+@@ -23,15 +24,19 @@ class MpvPlayer : public Napi::ObjectWrap<MpvPlayer> {
+ 	Napi::Value Attach(const Napi::CallbackInfo& info);
  	Napi::Value Resize(const Napi::CallbackInfo& info);
  	Napi::Value LockOverlayToParent(const Napi::CallbackInfo& info);
++	Napi::Value SetCursorVisible(const Napi::CallbackInfo& info);
  
 -	static void OnMpvEvents(void* ctx);
 +	static void OnMpvWakeup(void* ctx);
@@ -24,7 +26,22 @@ index ab4b745..e87178f 100644
  
  	#ifdef _WIN32
  	HWND sub_hwnd_ = nullptr;
-@@ -62,9 +65,13 @@ MpvPlayer::MpvPlayer(const Napi::CallbackInfo& info) : Napi::ObjectWrap<MpvPlaye
+ 	HWND parent_hwnd_ = nullptr;
++	bool cursor_hidden_ = false;
+ 	#endif
+ };
+ 
+@@ -42,7 +47,8 @@ Napi::Object MpvPlayer::Init(Napi::Env env, Napi::Object exports) {
+ 		InstanceMethod("getProperty", &MpvPlayer::GetProperty),
+ 		InstanceMethod("attach", &MpvPlayer::Attach),
+ 		InstanceMethod("resize", &MpvPlayer::Resize),
+-		InstanceMethod("lockOverlayToParent", &MpvPlayer::LockOverlayToParent)
++		InstanceMethod("lockOverlayToParent", &MpvPlayer::LockOverlayToParent),
++		InstanceMethod("setCursorVisible", &MpvPlayer::SetCursorVisible)
+ 	});
+ 
+ 	Napi::FunctionReference* constructor = new Napi::FunctionReference();
+@@ -62,33 +68,68 @@ MpvPlayer::MpvPlayer(const Napi::CallbackInfo& info) : Napi::ObjectWrap<MpvPlaye
  
  	setlocale(LC_NUMERIC, "C");
  	mpv_ = mpv_create();
@@ -36,9 +53,10 @@ index ab4b745..e87178f 100644
 +	destroyed_ = true;
 +	if (mpv_) mpv_set_wakeup_callback(mpv_, nullptr, nullptr);
  	#ifdef _WIN32
++	if (cursor_hidden_) ShowCursor(TRUE);
  	if (sub_hwnd_) DestroyWindow(sub_hwnd_);
  	#endif
-@@ -72,23 +79,53 @@ MpvPlayer::~MpvPlayer() {
+ 	if (mpv_) mpv_terminate_destroy(mpv_);
  	if (event_fn_) event_fn_.Release();
  }
  
@@ -103,7 +121,7 @@ index ab4b745..e87178f 100644
  	}
  }
  
-@@ -131,6 +168,9 @@ Napi::Value MpvPlayer::Attach(const Napi::CallbackInfo& info) {
+@@ -131,6 +172,9 @@ Napi::Value MpvPlayer::Attach(const Napi::CallbackInfo& info) {
  	mpv_set_option_string(mpv_, "osc", "no");
  	mpv_set_option_string(mpv_, "keep-open", "yes");
  
@@ -113,16 +131,37 @@ index ab4b745..e87178f 100644
  	return Napi::Boolean::New(env, true);
  	#else
  	return Napi::Boolean::New(env, false);
-@@ -171,6 +211,8 @@ Napi::Value MpvPlayer::LockOverlayToParent(const Napi::CallbackInfo& info) {
+@@ -171,6 +215,29 @@ Napi::Value MpvPlayer::LockOverlayToParent(const Napi::CallbackInfo& info) {
  	#endif
  }
  
++// mpv's own "cursor-autohide" property can't help here: sub_hwnd_ is a bare
++// "Static" window handed to mpv purely as a render target (wid) — nothing
++// subclasses its wndproc to forward WM_MOUSEMOVE, so mpv never sees cursor
++// motion over it and its autohide idle timer never fires. ShowCursor is a
++// per-thread display counter (not a set-once flag): guard with cursor_hidden_
++// so repeated calls with the same value can't drift it out of balance.
++Napi::Value MpvPlayer::SetCursorVisible(const Napi::CallbackInfo& info) {
++	Napi::Env env = info.Env();
++	#ifdef _WIN32
++	bool visible = info.Length() > 0 && info[0].As<Napi::Boolean>().Value();
++	if (!visible && !cursor_hidden_) {
++		ShowCursor(FALSE);
++		cursor_hidden_ = true;
++	} else if (visible && cursor_hidden_) {
++		ShowCursor(TRUE);
++		cursor_hidden_ = false;
++	}
++	#endif
++	return env.Undefined();
++}
++
 +// WARNING: synchronous — can block the calling thread if the mpv core is busy
 +// (e.g. wedged in a network open). Prefer events over polling this.
  Napi::Value MpvPlayer::GetProperty(const Napi::CallbackInfo& info) {
  	Napi::Env env = info.Env();
  	if (!mpv_ || info.Length() < 1) return env.Null();
-@@ -197,10 +239,14 @@ Napi::Value MpvPlayer::Command(const Napi::CallbackInfo& info) {
+@@ -197,10 +264,14 @@ Napi::Value MpvPlayer::Command(const Napi::CallbackInfo& info) {
  	return Napi::Number::New(env, res);
  }
  
@@ -139,7 +178,7 @@ index ab4b745..e87178f 100644
  
  Napi::Object InitModule(Napi::Env env, Napi::Object exports) { return MpvPlayer::Init(env, exports); }
 diff --git a/node_modules/electron-libmpv/index.d.ts b/node_modules/electron-libmpv/index.d.ts
-index 99c2692..ccf6548 100644
+index 99c2692..26fee38 100644
 --- a/node_modules/electron-libmpv/index.d.ts
 +++ b/node_modules/electron-libmpv/index.d.ts
 @@ -1,6 +1,17 @@
@@ -161,3 +200,24 @@ index 99c2692..ccf6548 100644
  	}
  	
  	class Mpv {
+@@ -25,6 +36,7 @@ declare module 'electron-libmpv' {
+ 		property(name: string, value: string | number | boolean): number;
+ 		getRawProperty(name: string): string | null;
+ 		lockOverlayToParent(mainHandle: Buffer, overlayHandle: Buffer): boolean;
++		setCursorVisible(visible: boolean): void;
+ 	}
+ 	
+ 	export = Mpv;
+diff --git a/node_modules/electron-libmpv/index.js b/node_modules/electron-libmpv/index.js
+index ad374c3..5099402 100644
+--- a/node_modules/electron-libmpv/index.js
++++ b/node_modules/electron-libmpv/index.js
+@@ -25,6 +25,7 @@ class Mpv {
+ 	property(name, value) { return this.player ? this.player.setProperty(name, value.toString()) : -1; }
+ 	getRawProperty(name) { return this.player ? this.player.getProperty(name) : null; }
+ 	lockOverlayToParent(mainHandle, overlayHandle) { return this.player ? this.player.lockOverlayToParent(mainHandle, overlayHandle) : false; }
++	setCursorVisible(visible) { if (this.player) this.player.setCursorVisible(!!visible); }
+ }
+ 
+ module.exports = Mpv;
+\ No newline at end of file
