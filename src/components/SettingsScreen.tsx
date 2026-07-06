@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { XtreamConfig, LiveStream } from '../../electron/xtream'
+import { THEMES, THEME_TOKENS, THEME_BY_ID } from '../themes'
 import '../app.css'
 
 interface SettingsScreenProps {
@@ -11,6 +12,9 @@ interface SettingsScreenProps {
   onUnhideChannel?: (streamId: number) => void
   softwareDecoding?: boolean
   onToggleSoftwareDecoding?: (enabled: boolean) => void
+  theme?: string
+  onSelectTheme?: (themeId: string) => void
+  onApplyCustomTheme?: (tokens: Record<string, string>) => void
 }
 
 function SettingsScreen({
@@ -22,6 +26,9 @@ function SettingsScreen({
   onUnhideChannel,
   softwareDecoding,
   onToggleSoftwareDecoding,
+  theme,
+  onSelectTheme,
+  onApplyCustomTheme,
 }: SettingsScreenProps) {
   const [serverUrl, setServerUrl] = useState(initialConfig?.serverUrl ?? '')
   const [username, setUsername] = useState(initialConfig?.username ?? '')
@@ -30,6 +37,25 @@ function SettingsScreen({
   const [testMessage, setTestMessage] = useState<string | null>(null)
   const [testPassedFor, setTestPassedFor] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+
+  // Prefill the import box with the current (or default) theme's tokens so the
+  // 16-key schema is visible to edit against.
+  const schemaTheme = (theme && THEME_BY_ID.get(theme)) || THEME_BY_ID.get('default-dark')!
+  const [themeJson, setThemeJson] = useState(() => JSON.stringify(schemaTheme.tokens, null, 2))
+  const [themeJsonError, setThemeJsonError] = useState<string | null>(null)
+
+  const handleApplyThemeJson = () => {
+    try {
+      const parsed = JSON.parse(themeJson)
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('Expected a JSON object of token → color.')
+      }
+      onApplyCustomTheme?.(parsed as Record<string, string>)
+      setThemeJsonError(null)
+    } catch (err) {
+      setThemeJsonError(err instanceof Error ? err.message : 'Invalid JSON')
+    }
+  }
 
   const currentKey = JSON.stringify({ serverUrl, username, password })
   const canSave = testPassedFor === currentKey
@@ -119,6 +145,76 @@ function SettingsScreen({
           <p className={`settings-message ${canSave ? 'ok' : 'err'}`}>{testMessage}</p>
         )}
       </div>
+
+      {onSelectTheme && (
+        <div className="settings-card">
+          <h2>Appearance</h2>
+          <p className="settings-sub">
+            Pick a color theme. <strong>System</strong> follows the Windows light/dark setting;
+            any other choice overrides it.
+          </p>
+          <div className="theme-grid">
+            <button
+              className={`theme-swatch${!theme || theme === 'system' ? ' active' : ''}`}
+              onClick={() => onSelectTheme('system')}
+            >
+              <span className="theme-dots theme-dots-system" aria-hidden="true">
+                <span style={{ background: '#11141b' }} />
+                <span style={{ background: '#f4f6fa' }} />
+                <span style={{ background: '#5b8cff' }} />
+                <span style={{ background: '#9aa3b8' }} />
+              </span>
+              <span className="theme-swatch-text">
+                <span className="theme-swatch-name">System</span>
+                <span className="theme-swatch-mode">follows Windows</span>
+              </span>
+            </button>
+            {THEMES.map((t) => (
+              <button
+                key={t.id}
+                className={`theme-swatch${theme === t.id ? ' active' : ''}`}
+                onClick={() => onSelectTheme(t.id)}
+              >
+                <span className="theme-dots" aria-hidden="true">
+                  <span style={{ background: t.tokens['bg-1'] }} />
+                  <span style={{ background: t.tokens['bg-3'] }} />
+                  <span style={{ background: t.tokens['accent'] }} />
+                  <span style={{ background: t.tokens['text'] }} />
+                </span>
+                <span className="theme-swatch-text">
+                  <span className="theme-swatch-name">{t.name}</span>
+                  <span className="theme-swatch-mode">{t.mode}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {onApplyCustomTheme && (
+            <details className="shortcuts-details" style={{ marginTop: 18 }}>
+              <summary>Paste a custom theme</summary>
+              <p className="settings-sub" style={{ marginTop: 10 }}>
+                Any palette (Gruvbox, a Terminal.sexy export…) as JSON of these {THEME_TOKENS.length}{' '}
+                keys. Omitted keys keep the current value.
+              </p>
+              <textarea
+                className="theme-json"
+                spellCheck={false}
+                value={themeJson}
+                onChange={(e) => setThemeJson(e.target.value)}
+              />
+              <div className="theme-json-actions">
+                <button className="btn-accent" onClick={handleApplyThemeJson}>
+                  Apply theme
+                </button>
+                {themeJsonError && <span className="settings-message err">{themeJsonError}</span>}
+                {theme === 'custom' && !themeJsonError && (
+                  <span className="settings-message ok">Custom theme active.</span>
+                )}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
 
       {onToggleSoftwareDecoding && (
         <div className="settings-card">

@@ -204,20 +204,26 @@ from day one, and treat the provider URL itself as a secret (it embeds the accou
   actual hide/show.
 
 ### Theming
-- **Backlog, requested 2026-07-06, wants a design look before turning on:** Skip likes
-  the current look but wants more of it — an in-app dark/light toggle (today `src/
-  index.css` only follows the OS's `prefers-color-scheme`, no manual switch) and some
-  variety beyond the one palette. Asked whether an open-source "theme marketplace" like
-  VS Code's exists for apps like this — answer: not a drag-and-drop gallery (no shared
-  schema across apps), but there's a well-established open-source ecosystem of
-  hand-portable color palettes built for exactly this (Catppuccin, Nord, Dracula,
-  Gruvbox, Tokyo Night, Rosé Pine, Solarized — all permissively licensed, all popular
-  precisely because people copy their hex codes into whatever app they're using).
-  Concrete shape discussed: since the whole look is already just ~15 CSS custom
-  properties in `index.css` (`--bg-0`, `--accent`, etc.), ship 2-3 of those palettes
-  translated to our variable names as built-in picks, plus a documented-schema "paste a
-  small JSON of hex values" import box in Settings for anything else found externally —
-  not a hosted gallery, not a bundled library of dozens of themes.
+- **Implemented and verified 2026-07-06** (after a design-preview artifact Skip approved —
+  "they all look GREAT"; he chose to ship every palette, not a curated 2-3). Settings gains
+  an **Appearance** card: a swatch grid with **System** (default — follows the OS
+  `prefers-color-scheme`, today's behavior) plus 8 built-in palettes (Default Dark/Light,
+  Catppuccin Mocha, Nord, Dracula, Tokyo Night, Rosé Pine, Rosé Pine Dawn, Solarized
+  Light), and a collapsible **paste-a-theme JSON** import box for anything external.
+  - The in-app manual light/dark control is folded into the theme list rather than a
+    separate toggle: picking any named theme overrides the OS (go dark with Dracula, light
+    with Solarized); "System" is the follow-OS escape hatch. Cleaner than a global toggle,
+    which wouldn't compose with fixed named palettes.
+  - Architecture: all palettes live in `src/themes.ts` as the 16 design tokens each
+    (single source of truth — adding more is one entry). `applyTheme()` sets the variables
+    inline on `:root`, which overrides `index.css` (inline styles beat the stylesheet's
+    `prefers-color-scheme` block, so a named theme wins over the OS regardless of mode);
+    "system" clears the inline vars so the stylesheet's OS rules take back over. Selection
+    persists in `prefs.json` (`theme`, plus `customTheme` token map for a pasted theme).
+    Known minor: brief flash of the default look on launch before the saved theme applies,
+    since prefs load async (same as favorites/hidden) — easily eliminated later if wanted.
+  - Only the two design-gated backlog items remain now; **Live TV category browsing** is
+    the last one (see the Live TV section), then build-order step 5 (packaging).
 
 ## v2 Scope (Recordings)
 

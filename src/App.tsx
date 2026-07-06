@@ -11,6 +11,7 @@ import PlayerStats from './components/PlayerStats'
 import MediaScrubber from './components/MediaScrubber'
 import VodBrowser from './components/VodBrowser'
 import SeriesBrowser from './components/SeriesBrowser'
+import { applyTheme, type ThemeTokens } from './themes'
 import './app.css'
 
 type View = 'live' | 'guide' | 'vod' | 'series'
@@ -52,6 +53,8 @@ function App() {
   const [channelFilter, setChannelFilter] = useState('')
   const [hiddenIds, setHiddenIds] = useState<Set<number>>(new Set())
   const [softwareDecoding, setSoftwareDecoding] = useState(false)
+  const [theme, setTheme] = useState('system')
+  const [customTheme, setCustomTheme] = useState<Record<string, string> | null>(null)
   const [prefsLoaded, setPrefsLoaded] = useState(false)
   const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus | null>(null)
   const [isFullScreen, setIsFullScreen] = useState(false)
@@ -81,22 +84,40 @@ function App() {
   useEffect(() => {
     softwareDecodingRef.current = softwareDecoding
   }, [softwareDecoding])
+  const themeRef = useRef(theme)
+  useEffect(() => {
+    themeRef.current = theme
+  }, [theme])
+  const customThemeRef = useRef(customTheme)
+  useEffect(() => {
+    customThemeRef.current = customTheme
+  }, [customTheme])
 
   const persistPrefs = (overrides: {
     favorites?: Set<number>
     hiddenIds?: Set<number>
     lastStreamId?: number | null
     softwareDecoding?: boolean
+    theme?: string
+    customTheme?: Record<string, string> | null
   }) => {
     window.prefs.save({
       favoriteStreamIds: Array.from(overrides.favorites ?? favoritesRef.current),
       hiddenStreamIds: Array.from(overrides.hiddenIds ?? hiddenIdsRef.current),
       lastStreamId: 'lastStreamId' in overrides ? overrides.lastStreamId! : lastStreamIdRef.current,
       softwareDecoding: overrides.softwareDecoding ?? softwareDecodingRef.current,
+      theme: overrides.theme ?? themeRef.current,
+      customTheme: 'customTheme' in overrides ? overrides.customTheme! : customThemeRef.current,
     })
   }
 
   useEffect(() => window.playback.onStatus(setPlaybackStatus), [])
+
+  // Apply the selected color theme to :root whenever it changes (see
+  // src/themes.ts). 'system' clears the overrides so the OS light/dark wins.
+  useEffect(() => {
+    applyTheme(theme, customTheme as ThemeTokens | null)
+  }, [theme, customTheme])
 
   // The stats/URL panel is per-channel — close it when the tuned channel
   // changes so it can't show one channel's URL under another's title.
@@ -158,6 +179,8 @@ function App() {
       setFavorites(new Set(p.favoriteStreamIds))
       setHiddenIds(new Set(p.hiddenStreamIds))
       setSoftwareDecoding(p.softwareDecoding)
+      setTheme(p.theme)
+      setCustomTheme(p.customTheme)
       lastStreamIdRef.current = p.lastStreamId
       setPrefsLoaded(true)
     })
@@ -363,6 +386,17 @@ function App() {
     persistPrefs({ softwareDecoding: enabled }) // remember for next launch
   }
 
+  const selectTheme = (themeId: string) => {
+    setTheme(themeId)
+    persistPrefs({ theme: themeId })
+  }
+
+  const applyCustomTheme = (tokens: Record<string, string>) => {
+    setCustomTheme(tokens)
+    setTheme('custom')
+    persistPrefs({ theme: 'custom', customTheme: tokens })
+  }
+
   // The list as displayed in the sidebar: name-filtered, favorites surfaced
   // first (or exclusively). Keyboard zapping walks this same order.
   const displayChannels = useMemo(() => {
@@ -488,6 +522,9 @@ function App() {
           onUnhideChannel={unhideChannel}
           softwareDecoding={softwareDecoding}
           onToggleSoftwareDecoding={toggleSoftwareDecoding}
+          theme={theme}
+          onSelectTheme={selectTheme}
+          onApplyCustomTheme={applyCustomTheme}
         />
       )}
 

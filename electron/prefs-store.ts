@@ -12,6 +12,11 @@ export interface Prefs {
   // by default; a "maximum compatibility" escape hatch for the rare malformed
   // stream that can hang the hardware decoder (see electron/playback.ts).
   softwareDecoding: boolean
+  // Selected color theme id ('system' follows the OS; other ids are built-ins
+  // from src/themes.ts, or 'custom' with customTheme below). See src/themes.ts.
+  theme: string
+  // Token map for the user's pasted custom theme, applied when theme==='custom'.
+  customTheme: Record<string, string> | null
 }
 
 function prefsPath(): string {
@@ -30,9 +35,21 @@ export async function loadPrefs(): Promise<Prefs> {
       hiddenStreamIds: toNumberArray(raw.hiddenStreamIds),
       lastStreamId: typeof raw.lastStreamId === 'number' ? raw.lastStreamId : null,
       softwareDecoding: raw.softwareDecoding === true,
+      theme: typeof raw.theme === 'string' ? raw.theme : 'system',
+      customTheme:
+        raw.customTheme && typeof raw.customTheme === 'object' && !Array.isArray(raw.customTheme)
+          ? (raw.customTheme as Record<string, string>)
+          : null,
     }
   } catch {
-    return { favoriteStreamIds: [], hiddenStreamIds: [], lastStreamId: null, softwareDecoding: false }
+    return {
+      favoriteStreamIds: [],
+      hiddenStreamIds: [],
+      lastStreamId: null,
+      softwareDecoding: false,
+      theme: 'system',
+      customTheme: null,
+    }
   }
 }
 
