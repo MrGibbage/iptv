@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { XtreamConfig, LiveStream } from '../electron/xtream'
+import type { PlaybackStatus } from '../electron/playback'
 import SettingsScreen from './components/SettingsScreen'
 import ChannelList from './components/ChannelList'
 import Player from './components/Player'
@@ -23,9 +24,62 @@ function App() {
   const [favorites, setFavorites] = useState<Set<number>>(new Set())
   const [favoritesOnly, setFavoritesOnly] = useState(false)
   const [channelFilter, setChannelFilter] = useState('')
+  const [hiddenIds, setHiddenIds] = useState<Set<number>>(new Set())
   const [prefsLoaded, setPrefsLoaded] = useState(false)
+  const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus | null>(null)
   const lastStreamIdRef = useRef<number | null>(null)
   const resumedRef = useRef(false)
+
+  const favoritesRef = useRef(favorites)
+  useEffect(() => {
+    favoritesRef.current = favorites
+  }, [favorites])
+  const hiddenIdsRef = useRef(hiddenIds)
+  useEffect(() => {
+    hiddenIdsRef.current = hiddenIds
+  }, [hiddenIds])
+
+  const persistPrefs = (overrides: {
+    favorites?: Set<number>
+    hiddenIds?: Set<number>
+    lastStreamId?: number | null
+  }) => {
+    window.prefs.save({
+      favoriteStreamIds: Array.from(overrides.favorites ?? favoritesRef.current),
+      hiddenStreamIds: Array.from(overrides.hiddenIds ?? hiddenIdsRef.current),
+      lastStreamId: 'lastStreamId' in overrides ? overrides.lastStreamId! : lastStreamIdRef.current,
+    })
+  }
+
+  useEffect(() => window.playback.onStatus(setPlaybackStatus), [])
+
+  useEffect(
+    () =>
+      // A channel becomes the startup-resume target only after it's played
+      // without stalling/erroring for a while (see CONFIRM_PLAYABLE_MS in
+      // electron/playback.ts) — persisting at tune time, or on the first
+      // frame, would boot-loop the app into a channel that plays briefly and
+      // then hangs.
+      window.playback.onConfirmed((streamId) => {
+        if (lastStreamIdRef.current === streamId) return
+        lastStreamIdRef.current = streamId
+        persistPrefs({ lastStreamId: streamId })
+      }),
+    [],
+  )
+
+  // mpv itself is unrecoverable once wedged (see electron/playback.ts) — the
+  // one useful automatic response is to make sure this channel doesn't do it
+  // to the next person too, so it's hidden immediately.
+  useEffect(() => {
+    if (playbackStatus?.state !== 'wedged' || playbackStatus.streamId == null) return
+    const streamId = playbackStatus.streamId
+    if (hiddenIdsRef.current.has(streamId)) return
+    const next = new Set(hiddenIdsRef.current)
+    next.add(streamId)
+    setHiddenIds(next)
+    persistPrefs({ hiddenIds: next })
+  }, [playbackStatus])
 
   useEffect(() => {
     window.settings.load().then((loaded) => {
@@ -34,6 +88,7 @@ function App() {
     })
     window.prefs.load().then((p) => {
       setFavorites(new Set(p.favoriteStreamIds))
+      setHiddenIds(new Set(p.hiddenStreamIds))
       lastStreamIdRef.current = p.lastStreamId
       setPrefsLoaded(true)
     })
@@ -69,43 +124,73 @@ function App() {
     }
   }, [config, selectedStream])
 
-  const persistPrefs = (favs: Set<number>, lastStreamId: number | null) => {
-    window.prefs.save({ favoriteStreamIds: Array.from(favs), lastStreamId })
-  }
-
   const tune = (stream: LiveStream) => {
     if (selectedStream && selectedStream.streamId !== stream.streamId) {
       setPreviousStream(selectedStream)
     }
     setSelectedStream(stream)
-    lastStreamIdRef.current = stream.streamId
-    persistPrefs(favorites, stream.streamId)
     setView('live')
   }
 
-  // Last-channel resume: once channels and prefs are both in, re-tune the
-  // channel that was playing when the app last closed.
+  // Start playback whenever a new stream URL is built. Same-URL re-tunes are
+  // covered by the error bar's Retry button.
   useEffect(() => {
-    if (resumedRef.current || !prefsLoaded || channels.length === 0 || selectedStream) return
-    resumedRef.current = true
-    const last = channels.find((c) => c.streamId === lastStreamIdRef.current)
-    if (last) setSelectedStream(last)
+    if (streamUrl && selectedStream) {
+      window.playback.play(streamUrl, selectedStream.streamId)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prefsLoaded, channels])
+  }, [streamUrl])
+
+  // Channels the user has hidden (froze the app, or manually blocked) never
+  // appear anywhere — sidebar, guide grid, or EPG search — regardless of
+  // favorite status. Resolved before favorites/filter so both surfaces and
+  // keyboard zapping stay in sync automatically.
+  const visibleChannels = useMemo(
+    () => channels.filter((c) => !hiddenIds.has(c.streamId)),
+    [channels, hiddenIds],
+  )
+
+  // EPG search queries the SQLite cache directly (main process), which has no
+  // notion of hidden channels — pass the hidden set's guide-side ids through
+  // so EpgGrid can filter its own search results the same way the grid rows
+  // already are (via the visibleChannels list above).
+  const hiddenEpgChannelIds = useMemo(
+    () =>
+      new Set(
+        channels
+          .filter((c) => hiddenIds.has(c.streamId) && c.epgChannelId)
+          .map((c) => c.epgChannelId!),
+      ),
+    [channels, hiddenIds],
+  )
 
   const toggleFavorite = (streamId: number) => {
     const next = new Set(favorites)
     if (next.has(streamId)) next.delete(streamId)
     else next.add(streamId)
     setFavorites(next)
-    persistPrefs(next, lastStreamIdRef.current)
+    persistPrefs({ favorites: next })
+  }
+
+  const hideChannel = (streamId: number) => {
+    const next = new Set(hiddenIds)
+    next.add(streamId)
+    setHiddenIds(next)
+    persistPrefs({ hiddenIds: next })
+  }
+
+  const unhideChannel = (streamId: number) => {
+    const next = new Set(hiddenIds)
+    next.delete(streamId)
+    setHiddenIds(next)
+    persistPrefs({ hiddenIds: next })
   }
 
   // The list as displayed in the sidebar: name-filtered, favorites surfaced
   // first (or exclusively). Keyboard zapping walks this same order.
   const displayChannels = useMemo(() => {
     const text = channelFilter.trim().toLowerCase()
-    let list = channels
+    let list = visibleChannels
     if (text) list = list.filter((c) => c.name.toLowerCase().includes(text))
     if (favoritesOnly) return list.filter((c) => favorites.has(c.streamId))
     if (favorites.size === 0) return list
@@ -113,7 +198,7 @@ function App() {
     const rest: LiveStream[] = []
     for (const c of list) (favorites.has(c.streamId) ? favs : rest).push(c)
     return [...favs, ...rest]
-  }, [channels, channelFilter, favoritesOnly, favorites])
+  }, [visibleChannels, channelFilter, favoritesOnly, favorites])
 
   // Quick switching: ArrowUp/ArrowDown zap through the visible list,
   // Backspace swaps back to the previously tuned channel.
@@ -139,6 +224,16 @@ function App() {
     return () => window.removeEventListener('keydown', onKey)
   })
 
+  // Last-channel resume: once channels and prefs are both in, re-tune the
+  // channel that was playing when the app last closed (never a hidden one).
+  useEffect(() => {
+    if (resumedRef.current || !prefsLoaded || visibleChannels.length === 0 || selectedStream) return
+    resumedRef.current = true
+    const last = visibleChannels.find((c) => c.streamId === lastStreamIdRef.current)
+    if (last) setSelectedStream(last)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefsLoaded, visibleChannels])
+
   if (!configLoaded) return null
 
   if (!config || showSettings) {
@@ -150,6 +245,9 @@ function App() {
           setShowSettings(false)
         }}
         onCancel={config ? () => setShowSettings(false) : undefined}
+        channels={channels}
+        hiddenIds={hiddenIds}
+        onUnhideChannel={unhideChannel}
       />
     )
   }
@@ -193,12 +291,42 @@ function App() {
             onToggleFavoritesOnly={() => setFavoritesOnly((v) => !v)}
             filterText={channelFilter}
             onFilterTextChange={setChannelFilter}
+            onHideChannel={hideChannel}
           />
         </aside>
         <div className="app-player-col">
           <NowNextBar stream={selectedStream} />
+          {/* Playback state must render OUTSIDE the player surface — the mpv
+              video is a native child window that paints over any HTML in
+              that rectangle. */}
+          {playbackStatus && playbackStatus.state !== 'idle' && playbackStatus.state !== 'playing' && (
+            <div
+              className={`playback-bar${playbackStatus.state !== 'loading' ? ' playback-bar-error' : ''}`}
+            >
+              {playbackStatus.state === 'loading' ? (
+                <span>Tuning {selectedStream ? selectedStream.name : ''}…</span>
+              ) : playbackStatus.state === 'wedged' ? (
+                <span className="playback-bar-msg">
+                  {playbackStatus.message} This channel has been hidden.
+                </span>
+              ) : (
+                <>
+                  <span className="playback-bar-msg">
+                    {playbackStatus.message ?? 'Playback failed'}
+                  </span>
+                  {streamUrl && (
+                    <button
+                      onClick={() => window.playback.play(streamUrl, selectedStream?.streamId)}
+                    >
+                      Retry
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
           <div className="app-player-surface">
-            <Player streamUrl={streamUrl} />
+            <Player />
           </div>
         </div>
       </div>
@@ -207,7 +335,8 @@ function App() {
         <div className="app-guide">
           <EpgGrid
             config={config}
-            channels={channels}
+            channels={visibleChannels}
+            hiddenEpgChannelIds={hiddenEpgChannelIds}
             tunedStreamId={selectedStream?.streamId ?? null}
             onTune={tune}
           />

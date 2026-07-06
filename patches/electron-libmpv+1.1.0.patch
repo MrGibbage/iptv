@@ -1,0 +1,163 @@
+diff --git a/node_modules/electron-libmpv/index.cc b/node_modules/electron-libmpv/index.cc
+index ab4b745..e87178f 100644
+--- a/node_modules/electron-libmpv/index.cc
++++ b/node_modules/electron-libmpv/index.cc
+@@ -4,6 +4,7 @@
+ #include <locale.h>
+ #include <string>
+ #include <vector>
++#include <atomic>
+ #include <mpv/client.h>
+ 
+ #ifdef _WIN32
+@@ -24,10 +25,12 @@ class MpvPlayer : public Napi::ObjectWrap<MpvPlayer> {
+ 	Napi::Value Resize(const Napi::CallbackInfo& info);
+ 	Napi::Value LockOverlayToParent(const Napi::CallbackInfo& info);
+ 
+-	static void OnMpvEvents(void* ctx);
++	static void OnMpvWakeup(void* ctx);
++	static void DrainEvents(Napi::Env env, Napi::Function jsCallback, MpvPlayer* self);
+ 
+ 	mpv_handle* mpv_;
+ 	Napi::ThreadSafeFunction event_fn_;
++	std::atomic<bool> destroyed_{false};
+ 
+ 	#ifdef _WIN32
+ 	HWND sub_hwnd_ = nullptr;
+@@ -62,9 +65,13 @@ MpvPlayer::MpvPlayer(const Napi::CallbackInfo& info) : Napi::ObjectWrap<MpvPlaye
+ 
+ 	setlocale(LC_NUMERIC, "C");
+ 	mpv_ = mpv_create();
++	// Without this, mpv never notifies anyone and the event queue is dead.
++	mpv_set_wakeup_callback(mpv_, OnMpvWakeup, this);
+ }
+ 
+ MpvPlayer::~MpvPlayer() {
++	destroyed_ = true;
++	if (mpv_) mpv_set_wakeup_callback(mpv_, nullptr, nullptr);
+ 	#ifdef _WIN32
+ 	if (sub_hwnd_) DestroyWindow(sub_hwnd_);
+ 	#endif
+@@ -72,23 +79,53 @@ MpvPlayer::~MpvPlayer() {
+ 	if (event_fn_) event_fn_.Release();
+ }
+ 
+-void MpvPlayer::OnMpvEvents(void* ctx) {
++// Wakeup runs on an arbitrary mpv thread and may not call any mpv API
++// (mpv_wait_event included) — it only schedules DrainEvents on the JS thread.
++void MpvPlayer::OnMpvWakeup(void* ctx) {
+ 	MpvPlayer* self = static_cast<MpvPlayer*>(ctx);
+-	if (!self || !self->event_fn_) return;
++	if (!self || self->destroyed_ || !self->event_fn_) return;
++	self->event_fn_.NonBlockingCall(self, DrainEvents);
++}
++
++// Runs on the JS thread: drain the queue and hand each event to JS as an
++// object ({ event, reason?, error?, name?, value? }).
++void MpvPlayer::DrainEvents(Napi::Env env, Napi::Function jsCallback, MpvPlayer* self) {
++	if (!self || self->destroyed_ || !self->mpv_) return;
++	if (!jsCallback || jsCallback.IsEmpty() || !jsCallback.IsFunction()) return;
+ 
+-	bool has_events = false;
+ 	while (mpv_event* event = mpv_wait_event(self->mpv_, 0)) {
+ 		if (event->event_id == MPV_EVENT_NONE) break;
+-		has_events = true;
+-	}
+ 
+-	if (has_events) {
+-		auto callback = [](Napi::Env env, Napi::Function jsCallback) {
+-			if (jsCallback && !jsCallback.IsEmpty() && jsCallback.IsFunction()) {
+-				jsCallback.Call({});
++		Napi::Object obj = Napi::Object::New(env);
++		obj.Set("event", mpv_event_name(event->event_id));
++
++		if (event->event_id == MPV_EVENT_END_FILE) {
++			mpv_event_end_file* ef = static_cast<mpv_event_end_file*>(event->data);
++			const char* reason = "unknown";
++			switch (ef->reason) {
++				case MPV_END_FILE_REASON_EOF: reason = "eof"; break;
++				case MPV_END_FILE_REASON_STOP: reason = "stop"; break;
++				case MPV_END_FILE_REASON_QUIT: reason = "quit"; break;
++				case MPV_END_FILE_REASON_ERROR: reason = "error"; break;
++				case MPV_END_FILE_REASON_REDIRECT: reason = "redirect"; break;
++			}
++			obj.Set("reason", reason);
++			if (ef->reason == MPV_END_FILE_REASON_ERROR) {
++				obj.Set("error", mpv_error_string(ef->error));
+ 			}
+-		};
+-		self->event_fn_.NonBlockingCall(callback);
++		} else if (event->event_id == MPV_EVENT_PROPERTY_CHANGE) {
++			mpv_event_property* prop = static_cast<mpv_event_property*>(event->data);
++			obj.Set("name", prop->name);
++			if (prop->format == MPV_FORMAT_DOUBLE) {
++				obj.Set("value", Napi::Number::New(env, *static_cast<double*>(prop->data)));
++			} else if (prop->format == MPV_FORMAT_FLAG) {
++				obj.Set("value", Napi::Boolean::New(env, *static_cast<int*>(prop->data) != 0));
++			} else if (prop->format == MPV_FORMAT_STRING) {
++				obj.Set("value", Napi::String::New(env, *static_cast<char**>(prop->data)));
++			}
++		}
++
++		jsCallback.Call({ obj });
+ 	}
+ }
+ 
+@@ -131,6 +168,9 @@ Napi::Value MpvPlayer::Attach(const Napi::CallbackInfo& info) {
+ 	mpv_set_option_string(mpv_, "osc", "no");
+ 	mpv_set_option_string(mpv_, "keep-open", "yes");
+ 
++	// Delivered as property-change events; consumers use it for stall detection.
++	mpv_observe_property(mpv_, 0, "time-pos", MPV_FORMAT_DOUBLE);
++
+ 	return Napi::Boolean::New(env, true);
+ 	#else
+ 	return Napi::Boolean::New(env, false);
+@@ -171,6 +211,8 @@ Napi::Value MpvPlayer::LockOverlayToParent(const Napi::CallbackInfo& info) {
+ 	#endif
+ }
+ 
++// WARNING: synchronous — can block the calling thread if the mpv core is busy
++// (e.g. wedged in a network open). Prefer events over polling this.
+ Napi::Value MpvPlayer::GetProperty(const Napi::CallbackInfo& info) {
+ 	Napi::Env env = info.Env();
+ 	if (!mpv_ || info.Length() < 1) return env.Null();
+@@ -197,10 +239,14 @@ Napi::Value MpvPlayer::Command(const Napi::CallbackInfo& info) {
+ 	return Napi::Number::New(env, res);
+ }
+ 
++// Async (mpv copies the value) so a busy/wedged core can't block the JS thread.
+ Napi::Value MpvPlayer::SetProperty(const Napi::CallbackInfo& info) {
+ 	Napi::Env env = info.Env();
+ 	if (!mpv_ || info.Length() < 2) return Napi::Number::New(env, -1);
+-	return Napi::Number::New(env, mpv_set_property_string(mpv_, info[0].ToString().Utf8Value().c_str(), info[1].ToString().Utf8Value().c_str()));
++	std::string name = info[0].ToString().Utf8Value();
++	std::string value = info[1].ToString().Utf8Value();
++	const char* value_ptr = value.c_str();
++	return Napi::Number::New(env, mpv_set_property_async(mpv_, 0, name.c_str(), MPV_FORMAT_STRING, &value_ptr));
+ }
+ 
+ Napi::Object InitModule(Napi::Env env, Napi::Object exports) { return MpvPlayer::Init(env, exports); }
+diff --git a/node_modules/electron-libmpv/index.d.ts b/node_modules/electron-libmpv/index.d.ts
+index 99c2692..ccf6548 100644
+--- a/node_modules/electron-libmpv/index.d.ts
++++ b/node_modules/electron-libmpv/index.d.ts
+@@ -1,6 +1,17 @@
+ declare module 'electron-libmpv' {
++	interface MpvEvent {
++		event: string;
++		/** end-file only: eof | stop | quit | error | redirect | unknown */
++		reason?: string;
++		/** end-file with reason "error" only: mpv error string */
++		error?: string;
++		/** property-change only */
++		name?: string;
++		value?: number | boolean | string;
++	}
++
+ 	interface MpvOptions {
+-		onEvent?: (event: any) => void;
++		onEvent?: (event: MpvEvent) => void;
+ 	}
+ 	
+ 	class Mpv {

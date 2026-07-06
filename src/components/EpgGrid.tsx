@@ -48,11 +48,14 @@ interface SelectedProgramme {
 interface EpgGridProps {
   config: XtreamConfig
   channels: LiveStream[]
+  /** Guide-side (XMLTV) ids for hidden channels — search queries the cache
+   *  directly and has no other way to know about them. */
+  hiddenEpgChannelIds: Set<string>
   tunedStreamId: number | null
   onTune: (stream: LiveStream) => void
 }
 
-function EpgGrid({ config, channels, tunedStreamId, onTune }: EpgGridProps) {
+function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune }: EpgGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [dayStartMs, setDayStartMs] = useState(() => localMidnight(Date.now()))
   const [programmes, setProgrammes] = useState<Map<string, EpgProgramme[]>>(new Map())
@@ -158,10 +161,12 @@ function EpgGrid({ config, channels, tunedStreamId, onTune }: EpgGridProps) {
       return
     }
     const timer = setTimeout(() => {
-      window.epg.search(searchQuery.trim()).then(setSearchResults)
+      window.epg.search(searchQuery.trim()).then((results) => {
+        setSearchResults(results.filter((r) => !hiddenEpgChannelIds.has(r.channelId)))
+      })
     }, 200)
     return () => clearTimeout(timer)
-  }, [searchQuery, searchActive])
+  }, [searchQuery, searchActive, hiddenEpgChannelIds])
 
   const scrollToTime = (timeMs: number) => {
     const el = scrollRef.current

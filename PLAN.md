@@ -4,11 +4,9 @@ Plan for a custom-built Windows IPTV viewing app, motivated by every tested Wind
 IPTV app having a dated UI and a bad EPG experience. The EPG is the #1 priority —
 it's the thing all the existing apps get wrong.
 
-**Status:** Build order step 3 complete (2026-07-05). Live TV UX polish landed:
-favorites (star + persist + favorites-first/filter), channel-name filter, keyboard
-quick-switching + last-channel resume, a CSS-variable design system across the whole
-app, and the EPG staging-swap (guide verified fully browsable mid-refresh against the
-real provider). Next: VOD/series browser (step 4).
+**Status:** Build order step 3 complete (2026-07-05), plus playback error-handling
+hardening (2026-07-06) added after real-world testing surfaced a channel that could
+freeze mpv's core and wedge the whole app. Next: VOD/series browser (step 4).
 **Project home:** `C:\Users\skip\projects\iptv` on ganymede. Develop with the native
 Windows Claude binary from PowerShell — not WSL; Node tooling across /mnt/c is slow. If you detect the user running claude with any linux binary, remind the user to exit and use the Windows binanry in PowerShell, started from the project directory.
 This is Skip's first TypeScript project.
@@ -197,6 +195,50 @@ Build-order step 3 is done as of 2026-07-05 — Live TV UX polish:
   Electron test before wiring in). The guide's no-data view is now a proper empty state:
   spinner + "first download can take a minute" while refreshing, error + retry, or a
   download call-to-action.
+
+Playback error-handling hardening landed 2026-07-06, prompted by a real provider channel
+(UK| SKY CINEMA SCI-FI) that froze playback and took the whole app down with it:
+
+- **Root cause, in two layers.** First: `electron-libmpv` never registered mpv's wakeup
+  callback and discarded every event payload, so the only way to observe playback state
+  was polling `getRawProperty` — which is *synchronous* and blocks the whole Electron
+  main process if mpv's core is busy, which is exactly what froze the app the first time.
+  Second (found only after fixing the first): some malformed streams don't just fail —
+  they hang the GPU hardware-decode session outright, a driver-level deadlock nothing
+  in-process can route around, confirmed via `mpv.log` (audio+video played fine for ~30s,
+  then every mpv event — including our own `stop` — just stopped arriving).
+- **Fix, layer one:** `electron-libmpv` is now patched (`patches/electron-libmpv+1.1.0.patch`,
+  applied via `patch-package` in `postinstall`) to register the wakeup callback and forward
+  real event payloads (`playback-restart`, `end-file` with reason/error, `time-pos`
+  property-change). `electron/playback.ts` is a strictly event-driven watchdog on top:
+  open-timeout (25s), stall-timeout (20s via `time-pos` silence), mpv's own error string
+  surfaced from `end-file`/log tail — zero synchronous mpv calls anywhere.
+  `electron/logger.ts` writes `userData/logs/main.log` (app events) and mpv's own
+  (quieted via `msg-level`) log to `mpv.log`.
+- **Fix, layer two — the wedge:** detected by arming a timer after any command mpv should
+  acknowledge (`loadfile`/`stop`) and clearing it on ANY mpv event; silence means the core
+  is dead. **An automatic kill-and-relaunch was tried and abandoned** — Chromium's own GPU
+  process shares the same physical device/driver mpv hung on, so even Electron's own exit
+  path could block on it too, `app.relaunch()`'s spawn didn't reliably survive a dev-mode
+  supervisor conflict, and getting a fully external kill+relaunch helper right cost far
+  more complexity than the failure warranted (full debug trail in conversation history if
+  ever revisited). Landed instead: a fixed, honest "Playback engine became unresponsive —
+  restart the app to continue" message with no Retry, and the offending channel is
+  auto-hidden so it can't repeat the wedge on the next launch.
+- **Hidden channels (new, small feature):** any channel — auto-hidden after a wedge, or
+  manually via a ⊘ button per channel row — disappears from the sidebar, guide grid, and
+  EPG search (`prefs.hiddenStreamIds`). Reviewable/restorable from Settings → Hidden
+  Channels, deliberately with no preview/playback there (that's exactly what could
+  trigger another freeze).
+- **Resume safety net:** a channel is only trusted as the next-launch resume target once
+  it's played without failing for 45s (`CONFIRM_PLAYABLE_MS`, comfortably past the ~30s
+  hang above) — otherwise a bad channel could boot-loop the app into itself even before
+  auto-hide kicks in.
+- **Incidental fix:** `vite.config.ts` had no `base: './'`, so a production (non-dev-server)
+  build rendered a blank white window — asset paths were root-relative, which breaks under
+  `file://`. Found and fixed while testing the wedge scenario against an unpacked build
+  (dev mode's hot-reload supervisor doesn't survive an externally-killed child, which is
+  *part of* why the kill-and-relaunch approach was abandoned above).
 
 Key choices unchanged from the original plan: Electron + libmpv, Xtream Codes as the only
 provider format, EPG grid quality as the defining feature, recordings deferred to v2

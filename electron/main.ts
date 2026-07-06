@@ -8,6 +8,8 @@ import * as settingsStore from './settings-store'
 import * as prefsStore from './prefs-store'
 import * as epg from './epg'
 import * as epgDb from './epg-db'
+import * as playback from './playback'
+import { log, rotateLogs } from './logger'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -64,14 +66,27 @@ function createWindow() {
 
 function setupMpv(window: BrowserWindow) {
   player = new Mpv({
-    onEvent: () => {
+    onEvent: (event) => {
+      playback.handleMpvEvent(event as playback.MpvEvent)
       window.webContents.send('mpv:event')
     },
   })
 
+  playback.init(
+    player,
+    (status) => {
+      window.webContents.send('playback:status', status)
+    },
+    (streamId) => {
+      window.webContents.send('playback:confirmed', streamId)
+    },
+  )
+
   ipcMain.handle('mpv:attach', (_event, x: number, y: number, width: number, height: number) => {
     const handle = window.getNativeWindowHandle()
-    return player!.attach(handle, x, y, width, height)
+    const ok = player!.attach(handle, x, y, width, height)
+    if (ok) playback.configureMpv()
+    return ok
   })
 
   ipcMain.handle('mpv:resize', (_event, x: number, y: number, width: number, height: number) => {
@@ -90,6 +105,14 @@ function setupMpv(window: BrowserWindow) {
     return player?.getRawProperty(name) ?? null
   })
 }
+
+ipcMain.handle('playback:play', (_event, url: string, streamId?: number) => {
+  playback.play(url, streamId)
+})
+
+ipcMain.handle('playback:stop', () => {
+  playback.stop()
+})
 
 ipcMain.handle('xtream:testConnection', (_event, config: XtreamConfig) => {
   return xtream.testConnection(config)
@@ -144,6 +167,7 @@ ipcMain.handle('epg:getBounds', () => {
 })
 
 epg.onStatusChange((status) => {
+  if (status.state === 'error' && status.error) log('epg', `refresh failed: ${status.error}`)
   win?.webContents.send('epg:status', status)
 })
 
@@ -159,6 +183,15 @@ async function refreshEpgIfConfigured() {
 // explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
+    // A wedged mpv (dead stream, blocked socket) can keep native threads
+    // alive through Electron's normal quit, hanging the process until
+    // Ctrl-C. Ask mpv to quit, then force-exit as a backstop.
+    try {
+      player?.command('quit')
+    } catch {
+      // player already gone
+    }
+    setTimeout(() => process.exit(0), 2000)
     app.quit()
     win = null
   }
@@ -173,6 +206,8 @@ app.on('activate', () => {
 })
 
 app.whenReady().then(() => {
+  rotateLogs()
+  log('main', 'app started')
   createWindow()
   refreshEpgIfConfigured()
   setInterval(refreshEpgIfConfigured, 60 * 60 * 1000)

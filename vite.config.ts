@@ -5,6 +5,10 @@ import react from '@vitejs/plugin-react'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  // Relative asset paths: the renderer is loaded via file:// in production
+  // (see main.ts's loadFile branch), where the default root-relative '/'
+  // base breaks every asset reference.
+  base: './',
   plugins: [
     react(),
     electron({

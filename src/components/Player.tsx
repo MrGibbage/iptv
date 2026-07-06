@@ -1,10 +1,9 @@
 import { useEffect, useRef } from 'react'
 
-interface PlayerProps {
-  streamUrl: string | null
-}
-
-function Player({ streamUrl }: PlayerProps) {
+// Pure video surface: keeps the native mpv child window glued to this
+// placeholder's geometry. Loading streams is App's job (via window.playback,
+// which routes through the main-process watchdog).
+function Player() {
   const placeholderRef = useRef<HTMLDivElement>(null)
   const attachedRef = useRef(false)
 
@@ -27,12 +26,6 @@ function Player({ streamUrl }: PlayerProps) {
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
-
-  useEffect(() => {
-    if (streamUrl) {
-      window.mpv.command('loadfile', streamUrl)
-    }
-  }, [streamUrl])
 
   return <div ref={placeholderRef} style={{ width: '100%', height: '100%', background: '#000' }} />
 }

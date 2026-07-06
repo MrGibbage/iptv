@@ -1,14 +1,24 @@
 import { useState } from 'react'
-import type { XtreamConfig } from '../../electron/xtream'
+import type { XtreamConfig, LiveStream } from '../../electron/xtream'
 import '../app.css'
 
 interface SettingsScreenProps {
   initialConfig: XtreamConfig | null
   onSaved: (config: XtreamConfig) => void
   onCancel?: () => void
+  channels?: LiveStream[]
+  hiddenIds?: Set<number>
+  onUnhideChannel?: (streamId: number) => void
 }
 
-function SettingsScreen({ initialConfig, onSaved, onCancel }: SettingsScreenProps) {
+function SettingsScreen({
+  initialConfig,
+  onSaved,
+  onCancel,
+  channels,
+  hiddenIds,
+  onUnhideChannel,
+}: SettingsScreenProps) {
   const [serverUrl, setServerUrl] = useState(initialConfig?.serverUrl ?? '')
   const [username, setUsername] = useState(initialConfig?.username ?? '')
   const [password, setPassword] = useState(initialConfig?.password ?? '')
@@ -104,6 +114,39 @@ function SettingsScreen({ initialConfig, onSaved, onCancel }: SettingsScreenProp
           <p className={`settings-message ${canSave ? 'ok' : 'err'}`}>{testMessage}</p>
         )}
       </div>
+
+      {/* Only shown once channels have actually loaded (not on first run). No
+          preview/playback here by design — reviewing a bad channel is the
+          whole point, so nothing on this screen should be able to tune it. */}
+      {channels && channels.length > 0 && hiddenIds && onUnhideChannel && (
+        <div className="settings-card">
+          <h2>Hidden Channels</h2>
+          <p className="settings-sub">
+            Channels you've hidden — manually, or automatically after one froze playback — are
+            removed from the channel list, guide, and search. Restore one to bring it back.
+          </p>
+          {hiddenIds.size === 0 ? (
+            <p className="settings-sub" style={{ marginBottom: 0 }}>
+              No channels hidden.
+            </p>
+          ) : (
+            Array.from(hiddenIds)
+              .map((streamId) => ({
+                streamId,
+                name: channels.find((c) => c.streamId === streamId)?.name ?? `Channel ${streamId}`,
+              }))
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map(({ streamId, name }) => (
+                <div key={streamId} className="hidden-channel-row">
+                  <span className="hidden-channel-name" title={name}>
+                    {name}
+                  </span>
+                  <button onClick={() => onUnhideChannel(streamId)}>Restore</button>
+                </div>
+              ))
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -56,6 +56,14 @@ interface Window {
     load: () => Promise<import('../electron/prefs-store').Prefs>
     save: (prefs: import('../electron/prefs-store').Prefs) => Promise<void>
   }
+  playback: {
+    play: (url: string, streamId?: number) => Promise<void>
+    stop: () => Promise<void>
+    onStatus: (
+      callback: (status: import('../electron/playback').PlaybackStatus) => void,
+    ) => () => void
+    onConfirmed: (callback: (streamId: number) => void) => () => void
+  }
   epg: {
     refresh: (
       config: import('../electron/xtream').XtreamConfig,

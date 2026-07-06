@@ -14,6 +14,7 @@ interface ChannelListProps {
   onToggleFavoritesOnly: () => void
   filterText: string
   onFilterTextChange: (text: string) => void
+  onHideChannel: (streamId: number) => void
 }
 
 function ChannelList({
@@ -29,6 +30,7 @@ function ChannelList({
   onToggleFavoritesOnly,
   filterText,
   onFilterTextChange,
+  onHideChannel,
 }: ChannelListProps) {
   const selectedRef = useRef<HTMLDivElement>(null)
 
@@ -99,6 +101,16 @@ function ChannelList({
                     }}
                   >
                     {isFav ? '★' : '☆'}
+                  </button>
+                  <button
+                    className="channel-hide"
+                    title="Hide this channel"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onHideChannel(channel.streamId)
+                    }}
+                  >
+                    ⊘
                   </button>
                 </div>
               )

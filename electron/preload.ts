@@ -56,6 +56,24 @@ contextBridge.exposeInMainWorld('settings', {
   save: (config: XtreamConfig) => ipcRenderer.invoke('settings:save', config),
 })
 
+// --------- Expose watched playback (loadfile + failure detection) ---------
+contextBridge.exposeInMainWorld('playback', {
+  play: (url: string, streamId?: number) => ipcRenderer.invoke('playback:play', url, streamId),
+  stop: () => ipcRenderer.invoke('playback:stop'),
+  onStatus: (callback: (status: unknown) => void) => {
+    const listener = (_event: unknown, status: unknown) => callback(status)
+    ipcRenderer.on('playback:status', listener as never)
+    return () => ipcRenderer.removeListener('playback:status', listener as never)
+  },
+  // Fires once a tuned channel has played without stalling/erroring for long
+  // enough to trust as a startup-resume target (see CONFIRM_PLAYABLE_MS).
+  onConfirmed: (callback: (streamId: number) => void) => {
+    const listener = (_event: unknown, streamId: number) => callback(streamId)
+    ipcRenderer.on('playback:confirmed', listener)
+    return () => ipcRenderer.removeListener('playback:confirmed', listener)
+  },
+})
+
 // --------- Expose viewing prefs (favorites, last channel) ---------
 contextBridge.exposeInMainWorld('prefs', {
   load: () => ipcRenderer.invoke('prefs:load'),
