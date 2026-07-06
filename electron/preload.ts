@@ -40,6 +40,12 @@ contextBridge.exposeInMainWorld('mpv', {
     ipcRenderer.on('mpv:event', listener)
     return () => ipcRenderer.removeListener('mpv:event', listener)
   },
+  // Current playback position in seconds (from mpv's observed time-pos).
+  onTimePos: (callback: (secs: number) => void) => {
+    const listener = (_event: unknown, secs: number) => callback(secs)
+    ipcRenderer.on('mpv:timepos', listener)
+    return () => ipcRenderer.removeListener('mpv:timepos', listener)
+  },
 })
 
 // --------- Expose app-shell controls (full screen) to the Renderer process ---------
@@ -47,6 +53,8 @@ contextBridge.exposeInMainWorld('app', {
   toggleFullScreen: () => ipcRenderer.invoke('app:toggleFullScreen') as Promise<boolean>,
   isFullScreen: () => ipcRenderer.invoke('app:isFullScreen') as Promise<boolean>,
   relaunch: () => ipcRenderer.invoke('app:relaunch') as Promise<void>,
+  getCursorPoint: () =>
+    ipcRenderer.invoke('app:getCursorPoint') as Promise<{ x: number; y: number }>,
   onFullScreenChange: (callback: (isFullScreen: boolean) => void) => {
     const listener = (_event: unknown, isFullScreen: boolean) => callback(isFullScreen)
     ipcRenderer.on('app:fullscreen-changed', listener)

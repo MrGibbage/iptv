@@ -259,6 +259,23 @@
   flex-direction: column;
 }
 
+.media-toolbar {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.media-toolbar-top {
+  display: flex;
+  align-items: center;
+}
+
+.media-toolbar-top .app-icon-btn {
+  margin: 4px 8px;
+  flex-shrink: 0;
+}
+
 .vod-nowplaying {
   flex: 1;
   min-width: 0;
@@ -269,6 +286,57 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* VOD/series seek bar */
+.scrubber {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 14px 8px;
+}
+
+.scrubber-time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.76rem;
+  color: var(--text-dim);
+  min-width: 44px;
+}
+
+.scrubber-time:last-child {
+  text-align: right;
+}
+
+.scrubber-range {
+  flex: 1;
+  min-width: 0;
+  height: 5px;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 999px;
+  /* Filled portion (accent) up to the thumb, track colour after. */
+  background: linear-gradient(
+    to right,
+    var(--accent) 0%,
+    var(--accent) var(--scrubber-pct, 0%),
+    var(--border) var(--scrubber-pct, 0%),
+    var(--border) 100%
+  );
+}
+
+.scrubber-range::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-1);
+  cursor: pointer;
 }
 
 .app-vod {

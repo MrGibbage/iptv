@@ -8,6 +8,7 @@ import Player from './components/Player'
 import EpgGrid from './components/EpgGrid'
 import NowNextBar from './components/NowNextBar'
 import PlayerStats from './components/PlayerStats'
+import MediaScrubber from './components/MediaScrubber'
 import VodBrowser from './components/VodBrowser'
 import SeriesBrowser from './components/SeriesBrowser'
 import './app.css'
@@ -29,6 +30,11 @@ function mediaTitle(media: PlayingMedia): string {
 }
 
 const PROGRESS_SAVE_INTERVAL_MS = 20_000
+// In theater mode the cursor (and the VOD/series scrubber) hide after this
+// long with no pointer movement, and reappear the moment the pointer moves.
+const CURSOR_IDLE_MS = 3_000
+// How often to sample the global cursor position while in theater mode.
+const CURSOR_POLL_MS = 250
 
 function App() {
   const [config, setConfig] = useState<XtreamConfig | null>(null)
@@ -55,6 +61,9 @@ function App() {
   const [playingMedia, setPlayingMedia] = useState<PlayingMedia | null>(null)
   const [mediaStreamUrl, setMediaStreamUrl] = useState<string | null>(null)
   const [mediaResumeSecs, setMediaResumeSecs] = useState(0)
+  const [mediaPosition, setMediaPosition] = useState(0)
+  const [mediaDuration, setMediaDuration] = useState(0)
+  const [pointerActive, setPointerActive] = useState(true)
   const [progressMap, setProgressMap] = useState<ProgressMap>({})
   const lastStreamIdRef = useRef<number | null>(null)
   const resumedRef = useRef(false)
@@ -226,6 +235,8 @@ function App() {
   const playMedia = (media: PlayingMedia, resumeSecs: number) => {
     mediaSeekedRef.current = false
     setMediaResumeSecs(resumeSecs)
+    setMediaPosition(resumeSecs)
+    setMediaDuration(0)
     setPlayingMedia(media)
   }
 
@@ -269,6 +280,35 @@ function App() {
     return () => {
       clearInterval(interval)
       saveNow()
+    }
+  }, [playingMedia, playbackStatus?.state])
+
+  // Live playback position for the scrubber, from mpv's observed time-pos
+  // (forwarded by the main process — no extra polling). Only subscribed while
+  // a movie/episode is playing, so live TV doesn't drive per-second re-renders.
+  useEffect(() => {
+    if (!playingMedia) return
+    return window.mpv.onTimePos(setMediaPosition)
+  }, [playingMedia])
+
+  // Total duration for the scrubber — one on-demand read once the file is
+  // playing (duration isn't known until then), retried until mpv reports it.
+  useEffect(() => {
+    if (!playingMedia || playbackStatus?.state !== 'playing') return
+    let cancelled = false
+    let retry: ReturnType<typeof setTimeout>
+    const fetchDuration = () => {
+      window.mpv.getProperty('duration').then((d) => {
+        if (cancelled) return
+        const secs = Number(d)
+        if (Number.isFinite(secs) && secs > 0) setMediaDuration(secs)
+        else retry = setTimeout(fetchDuration, 1000)
+      })
+    }
+    fetchDuration()
+    return () => {
+      cancelled = true
+      clearTimeout(retry)
     }
   }, [playingMedia, playbackStatus?.state])
 
@@ -380,15 +420,38 @@ function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [isFullScreen, showSettings, playingMedia])
 
-  // Theater mode is meant to be distraction-free with nothing to click, so
-  // hide the mouse cursor too — a CSS cursor rule on the React tree can't
-  // reach it (mpv renders into a native child window that sits on top of the
-  // page), and mpv's own cursor-autohide can't either: that window is a bare
-  // render target with nothing forwarding mouse input to mpv, so mpv never
-  // sees motion over it. setCursorVisible calls Win32's ShowCursor directly.
+  // Theater mode is meant to be distraction-free, so the cursor (and the
+  // scrubber) hide when idle and reappear on movement. Movement can't be
+  // detected via DOM mousemove — mpv's native child window covers the video
+  // and swallows those events — so poll the global cursor position instead.
   useEffect(() => {
-    window.mpv.setCursorVisible(!theaterMode)
+    if (!theaterMode) {
+      setPointerActive(true)
+      return
+    }
+    setPointerActive(false)
+    let last: { x: number; y: number } | null = null
+    let lastMoveAt = 0
+    const poll = setInterval(async () => {
+      const p = await window.app.getCursorPoint()
+      if (last && (p.x !== last.x || p.y !== last.y)) {
+        lastMoveAt = Date.now()
+        setPointerActive(true)
+      } else if (Date.now() - lastMoveAt > CURSOR_IDLE_MS) {
+        setPointerActive(false)
+      }
+      last = p
+    }, CURSOR_POLL_MS)
+    return () => clearInterval(poll)
   }, [theaterMode])
+
+  // Apply cursor visibility: always visible unless we're in theater mode and
+  // idle. setCursorVisible calls Win32's ShowCursor directly (a CSS cursor
+  // rule can't reach the native mpv window, and mpv's own cursor-autohide
+  // never fires over that bare render target).
+  useEffect(() => {
+    window.mpv.setCursorVisible(!theaterMode || pointerActive)
+  }, [theaterMode, pointerActive])
 
   // Last-channel resume: once channels and prefs are both in, re-tune the
   // channel that was playing when the app last closed (never a hidden one).
@@ -545,12 +608,22 @@ function App() {
                 />
               </div>
             )}
-            {(view === 'vod' || view === 'series') && playingMedia && !theaterMode && (
-              <div className="player-toolbar">
-                <div className="vod-nowplaying">▶ {mediaTitle(playingMedia)}</div>
-                <button className="app-icon-btn" onClick={stopMedia}>
-                  ← Back to {view === 'vod' ? 'Movies' : 'TV Shows'}
-                </button>
+            {(view === 'vod' || view === 'series') && playingMedia && (!theaterMode || pointerActive) && (
+              <div className="media-toolbar">
+                <div className="media-toolbar-top">
+                  <div className="vod-nowplaying">▶ {mediaTitle(playingMedia)}</div>
+                  <button className="app-icon-btn" onClick={stopMedia}>
+                    ← Back to {view === 'vod' ? 'Movies' : 'TV Shows'}
+                  </button>
+                </div>
+                <MediaScrubber
+                  positionSecs={mediaPosition}
+                  durationSecs={mediaDuration}
+                  onSeek={(secs) => {
+                    window.mpv.command('seek', String(secs), 'absolute')
+                    setMediaPosition(secs)
+                  }}
+                />
               </div>
             )}
             {showFsHint && (

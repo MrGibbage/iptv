@@ -28,6 +28,7 @@ interface Window {
     toggleFullScreen: () => Promise<boolean>
     isFullScreen: () => Promise<boolean>
     relaunch: () => Promise<void>
+    getCursorPoint: () => Promise<{ x: number; y: number }>
     onFullScreenChange: (callback: (isFullScreen: boolean) => void) => () => void
   }
   mpv: {
@@ -38,6 +39,7 @@ interface Window {
     getProperty: (name: string) => Promise<string | null>
     setCursorVisible: (visible: boolean) => Promise<void>
     onEvent: (callback: () => void) => () => void
+    onTimePos: (callback: (secs: number) => void) => () => void
   }
   xtream: {
     testConnection: (

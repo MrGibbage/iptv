@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, screen } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 import path from 'node:path'
@@ -97,7 +97,14 @@ function createWindow() {
 function setupMpv(window: BrowserWindow) {
   player = new Mpv({
     onEvent: (event) => {
-      playback.handleMpvEvent(event as playback.MpvEvent)
+      const ev = event as playback.MpvEvent
+      playback.handleMpvEvent(ev)
+      // Forward the playback position (mpv already observes time-pos for the
+      // stall watchdog — see the addon patch — so this is free; no extra
+      // synchronous getProperty poll). Drives the VOD/series scrubber.
+      if (ev.event === 'property-change' && ev.name === 'time-pos' && typeof ev.value === 'number') {
+        window.webContents.send('mpv:timepos', ev.value)
+      }
       window.webContents.send('mpv:event')
     },
   })
@@ -152,6 +159,12 @@ ipcMain.handle('app:toggleFullScreen', () => {
 })
 
 ipcMain.handle('app:isFullScreen', () => win?.isFullScreen() ?? false)
+
+// Global cursor position, polled by the renderer to drive idle-based
+// cursor/scrubber hiding in theater mode. Works even while the pointer is over
+// mpv's native child window (which swallows DOM mouse events, so a renderer
+// mousemove listener can't see motion over the video).
+ipcMain.handle('app:getCursorPoint', () => screen.getCursorScreenPoint())
 
 ipcMain.handle('playback:play', (_event, url: string, streamId?: number) => {
   playback.play(url, streamId)
