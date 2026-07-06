@@ -40,23 +40,27 @@ async function fetchStats(): Promise<StatRow[]> {
 }
 
 interface PlayerStatsProps {
-  // Any change (including going idle) closes the panel and drops stale stats.
+  // Any change (including going idle) drops stale stats. Panel visibility is
+  // controlled by the parent so it can render the channel #/URL under the
+  // title (left) in sync with this mpv-properties panel (right).
   streamKey: number | null
-  // App-level facts about the current channel (not mpv properties): shown
-  // immediately, without waiting on / needing a getRawProperty round-trip.
-  channelNumber?: number
-  streamUrl?: string | null
+  open: boolean
+  onToggle: () => void
 }
 
-function PlayerStats({ streamKey, channelNumber, streamUrl }: PlayerStatsProps) {
-  const [open, setOpen] = useState(false)
+function PlayerStats({ streamKey, open, onToggle }: PlayerStatsProps) {
   const [stats, setStats] = useState<StatRow[] | null>(null)
   const [loading, setLoading] = useState(false)
 
+  // Drop stale stats when the channel changes.
+  useEffect(() => setStats(null), [streamKey])
+
+  // Fetch when the panel is open (and re-fetch if the channel changes while
+  // it's still open).
   useEffect(() => {
-    setOpen(false)
-    setStats(null)
-  }, [streamKey])
+    if (open) refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, streamKey])
 
   const refresh = () => {
     setLoading(true)
@@ -65,19 +69,13 @@ function PlayerStats({ streamKey, channelNumber, streamUrl }: PlayerStatsProps) 
       .finally(() => setLoading(false))
   }
 
-  const toggle = () => {
-    const next = !open
-    setOpen(next)
-    if (next) refresh()
-  }
-
   return (
     <>
       <button
         className="app-icon-btn"
         title="Playback info (stats for nerds)"
         disabled={streamKey == null}
-        onClick={toggle}
+        onClick={onToggle}
       >
         ⓘ
       </button>
@@ -89,29 +87,18 @@ function PlayerStats({ streamKey, channelNumber, streamUrl }: PlayerStatsProps) 
               {loading ? 'Refreshing…' : 'Refresh'}
             </button>
           </div>
-          <dl className="stats-panel-list">
-            {channelNumber != null && channelNumber > 0 && (
-              <div className="stats-panel-row">
-                <dt>Channel #</dt>
-                <dd>{channelNumber}</dd>
-              </div>
-            )}
-            {streamUrl && (
-              <div className="stats-panel-row">
-                <dt>Stream URL</dt>
-                <dd className="stats-panel-url">{streamUrl}</dd>
-              </div>
-            )}
-            {stats
-              ? stats.map((row) => (
-                  <div key={row.label} className="stats-panel-row">
-                    <dt>{row.label}</dt>
-                    <dd>{row.value}</dd>
-                  </div>
-                ))
-              : null}
-          </dl>
-          {!stats && <p className="stats-panel-empty">Loading…</p>}
+          {stats ? (
+            <dl className="stats-panel-list">
+              {stats.map((row) => (
+                <div key={row.label} className="stats-panel-row">
+                  <dt>{row.label}</dt>
+                  <dd>{row.value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <p className="stats-panel-empty">Loading…</p>
+          )}
         </div>
       )}
     </>

@@ -50,6 +50,7 @@ function App() {
   const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus | null>(null)
   const [isFullScreen, setIsFullScreen] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
+  const [statsOpen, setStatsOpen] = useState(false)
   const [showFsHint, setShowFsHint] = useState(false)
   const [playingMedia, setPlayingMedia] = useState<PlayingMedia | null>(null)
   const [mediaStreamUrl, setMediaStreamUrl] = useState<string | null>(null)
@@ -87,6 +88,10 @@ function App() {
   }
 
   useEffect(() => window.playback.onStatus(setPlaybackStatus), [])
+
+  // The stats/URL panel is per-channel — close it when the tuned channel
+  // changes so it can't show one channel's URL under another's title.
+  useEffect(() => setStatsOpen(false), [selectedStream?.streamId])
 
   // F11/Esc are bound directly in the main process, so this only keeps the
   // header button's icon/label (and theater mode below) in sync when full
@@ -514,11 +519,29 @@ function App() {
           <div className="app-player-col">
             {view === 'live' && selectedStream && !theaterMode && (
               <div className="player-toolbar">
-                <NowNextBar stream={selectedStream} />
+                <div className="toolbar-main">
+                  <NowNextBar stream={selectedStream} />
+                  {statsOpen && (
+                    <div className="channel-meta">
+                      {selectedStream.num > 0 && (
+                        <span className="channel-meta-item">
+                          <span className="channel-meta-label">Channel</span>
+                          {selectedStream.num}
+                        </span>
+                      )}
+                      {streamUrl && (
+                        <span className="channel-meta-item channel-meta-item-url">
+                          <span className="channel-meta-label">URL</span>
+                          <span className="channel-meta-url">{streamUrl}</span>
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <PlayerStats
                   streamKey={selectedStream.streamId}
-                  channelNumber={selectedStream.num}
-                  streamUrl={streamUrl}
+                  open={statsOpen}
+                  onToggle={() => setStatsOpen((o) => !o)}
                 />
               </div>
             )}

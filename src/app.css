@@ -122,10 +122,54 @@
   border-bottom: 1px solid var(--border);
 }
 
-.player-toolbar .nownext-bar {
+.toolbar-main {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.player-toolbar .nownext-bar {
+  min-width: 0;
   border-bottom: none;
+}
+
+/* Channel #/URL shown under the title when the stats panel is open. Lives in
+   the left column, which spans the full toolbar width minus the stats panel —
+   far more room than the panel for a long stream URL. */
+.channel-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 22px;
+  padding: 3px 14px 7px;
+  min-width: 0;
+}
+
+.channel-meta-item {
+  font-size: 0.8rem;
+  color: var(--text);
+  min-width: 0;
+}
+
+.channel-meta-item-url {
+  flex: 1;
+  min-width: 0;
+}
+
+.channel-meta-label {
+  margin-right: 7px;
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.channel-meta-url {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  word-break: break-all;
 }
 
 .player-toolbar .app-icon-btn {
@@ -138,16 +182,6 @@
   background: var(--bg-1);
   border-bottom: 1px solid var(--border);
   font-size: 0.82rem;
-  /* The now/next bar (flex:1) fills the empty left space; the panel takes a
-     fixed area on the right, wide enough for the (long) stream URL to wrap
-     into a couple of lines rather than blowing the toolbar out. */
-  max-width: 460px;
-}
-
-.stats-panel-url {
-  word-break: break-all;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.76rem;
 }
 
 .stats-panel-header {
