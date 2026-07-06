@@ -8,8 +8,9 @@ it's the thing all the existing apps get wrong.
 hardening (2026-07-06) added after real-world testing surfaced a channel that could
 freeze mpv's core and wedge the whole app. A small App shell backlog (full-screen
 toggle, custom window title, sidebar hide/show, keyboard-shortcuts reference in
-Settings) was requested 2026-07-06 and is documented under "App shell / Windows feel"
-below, not yet implemented. Next: VOD/series browser (step 4), then that backlog.
+Settings, "stats for nerds" playback info panel) was requested 2026-07-06 and is
+documented under "App shell / Windows feel" below, not yet implemented. Next:
+VOD/series browser (step 4), then that backlog.
 **Project home:** `C:\Users\skip\projects\iptv` on ganymede. Develop with the native
 Windows Claude binary from PowerShell — not WSL; Node tooling across /mnt/c is slow. If you detect the user running claude with any linux binary, remind the user to exit and use the Windows binanry in PowerShell, started from the project directory.
 This is Skip's first TypeScript project.
@@ -99,6 +100,13 @@ from day one, and treat the provider URL itself as a secret (it embeds the accou
   4. **Keyboard shortcuts reference in Settings** — a small, collapsed-by-default section
      listing the app's keyboard shortcuts (↑/↓ zap, Backspace previous channel, etc.) so
      Skip can look them up when he forgets. Read-only — no rebinding UI needed.
+  5. **"Stats for nerds" (requested 2026-07-06)** — an info icon near the player that
+     shows current playback stats: bitrate, video resolution, video/audio codec, and
+     similar mpv-exposed properties (fps, hwdec state, etc.). Likely pulled from mpv
+     properties (`video-bitrate`, `audio-bitrate`, `video-params`, `hwdec-current`, …)
+     via the existing `getProperty` bridge — but per `electron/playback.ts`'s hard-won
+     lesson, that call is synchronous and must not be polled; only read on demand when
+     the user opens the panel, never on a timer.
 
 ## v2 Scope (Recordings)
 
