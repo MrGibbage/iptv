@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import Mpv from 'electron-libmpv'
@@ -12,6 +12,11 @@ import * as playback from './playback'
 import { log, rotateLogs } from './logger'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+// No File/Edit/View/Window/Help bar — it's Electron's default template, not
+// anything this app uses. Reload/DevTools remain available via their usual
+// keyboard shortcuts even with the menu gone.
+Menu.setApplicationMenu(null)
 
 // Required for libmpv to render via GPU-accelerated D3D11 into the embedded window.
 app.commandLine.appendSwitch('use-angle', 'd3d11')
@@ -52,6 +57,16 @@ function createWindow() {
   // Test active push message to Renderer-process.
   win.webContents.on('did-finish-load', () => {
     win?.webContents.send('main-process-message', (new Date).toLocaleString())
+  })
+
+  // Electron's Ctrl+R/Ctrl+Shift+I only exist because of the default menu's
+  // 'reload'/'toggleDevTools' roles — removing the menu bar (Menu.setApplicationMenu
+  // above) silently took them with it. Rebind them directly so dev/debugging still
+  // works with no menu.
+  win.webContents.on('before-input-event', (_event, input) => {
+    if (input.type !== 'keyDown' || !input.control) return
+    if (input.key.toLowerCase() === 'r') win?.webContents.reload()
+    else if (input.key.toLowerCase() === 'i' && input.shift) win?.webContents.toggleDevTools()
   })
 
   if (VITE_DEV_SERVER_URL) {

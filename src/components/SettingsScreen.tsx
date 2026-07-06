@@ -56,6 +56,12 @@ function SettingsScreen({
 
   return (
     <div className="settings-wrap">
+      {onCancel && (
+        <div className="settings-header">
+          <button onClick={onCancel}>← Back</button>
+          <span className="settings-header-title">Settings</span>
+        </div>
+      )}
       <div className="settings-card">
         <h2>Xtream Account</h2>
         <p className="settings-sub">
@@ -103,11 +109,6 @@ function SettingsScreen({
           <button className="btn-accent" onClick={handleSave} disabled={!canSave || saving}>
             {saving ? 'Saving…' : 'Save'}
           </button>
-          {onCancel && (
-            <button onClick={onCancel} style={{ marginLeft: 'auto' }}>
-              Cancel
-            </button>
-          )}
         </div>
 
         {testMessage && (

@@ -284,9 +284,27 @@
   background: var(--bg-0);
 }
 
+.settings-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-header-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
 .settings-card {
   width: 440px;
-  margin: 0 20px 24px;
+  margin: 24px 20px 24px;
   background: var(--bg-1);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -294,7 +312,7 @@
   box-sizing: border-box;
 }
 
-.settings-card:first-child {
+.settings-wrap > .settings-card:first-child {
   margin-top: 9vh;
 }
 
