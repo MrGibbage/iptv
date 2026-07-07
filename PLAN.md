@@ -154,6 +154,21 @@ from day one, and treat the provider URL itself as a secret (it embeds the accou
   blocking `getProperty` poll); duration is read once when the file starts. In theater
   mode the scrubber reveals with the cursor (see idle-cursor item below) so it's
   reachable, then hides when idle.
+- **NEXT SESSION (planned 2026-07-07 for the following session): "Search all" scope
+  toggle for Movies + TV Shows.** Today the search box in `VodBrowser.tsx`/
+  `SeriesBrowser.tsx` filters only the *currently selected category* (a client-side
+  filter over the per-category `streams`/list state). Skip wants an optional
+  whole-library search. Agreed design (GitHub/Reddit-style, not two search bars): one
+  search box with a scope toggle **"This category | All"**, default "This category"
+  (today's behavior). Implementation notes captured when scoped: `getVodStreams(config)`
+  / `getSeriesList(config)` with **no** category id already return the entire library, so
+  no backend change — lazy-fetch the full list the first time "All" is used and cache it
+  in component state for the session; only apply "All" *while there's a query* (clearing
+  the box drops back to the selected category, since the poster grid isn't virtualized and
+  shouldn't render thousands of cards); optionally tag each global result with its category
+  (like GitHub shows the repo). Do this for both Movies and TV Shows together. After this,
+  the only thing left is build-order step 5 (packaging) — Skip's chosen order is
+  search-first, then package.
 
 ### App shell / Windows feel
 - Custom title bar (VS Code style) or native chrome; taskbar/Alt-Tab, tray, native
