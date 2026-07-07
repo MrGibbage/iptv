@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { XtreamConfig, LiveStream, VodStream, SeriesEpisode } from '../electron/xtream'
+import type { XtreamConfig, LiveStream, LiveCategory, VodStream, SeriesEpisode } from '../electron/xtream'
 import type { PlaybackStatus } from '../electron/playback'
 import type { ProgressMap } from '../electron/progress-store'
 import SettingsScreen from './components/SettingsScreen'
@@ -48,6 +48,8 @@ function App() {
   const [channels, setChannels] = useState<LiveStream[]>([])
   const [channelsLoading, setChannelsLoading] = useState(false)
   const [channelsError, setChannelsError] = useState<string | null>(null)
+  const [categories, setCategories] = useState<LiveCategory[]>([])
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [favorites, setFavorites] = useState<Set<number>>(new Set())
   const [favoritesOnly, setFavoritesOnly] = useState(false)
   const [channelFilter, setChannelFilter] = useState('')
@@ -202,6 +204,16 @@ function App() {
       })
       .finally(() => {
         if (!cancelled) setChannelsLoading(false)
+      })
+    // Categories for the sidebar's category filter — labels only; the actual
+    // filtering is client-side off each channel's categoryId (no re-fetch).
+    window.xtream
+      .getLiveCategories(config)
+      .then((cats) => {
+        if (!cancelled) setCategories(cats)
+      })
+      .catch(() => {
+        if (!cancelled) setCategories([])
       })
     // Kick a TTL-gated EPG refresh whenever the config becomes available or
     // changes (a no-op when the cache is fresh).
@@ -402,6 +414,7 @@ function App() {
   const displayChannels = useMemo(() => {
     const text = channelFilter.trim().toLowerCase()
     let list = visibleChannels
+    if (selectedCategoryId) list = list.filter((c) => c.categoryId === selectedCategoryId)
     if (text) list = list.filter((c) => c.name.toLowerCase().includes(text))
     if (favoritesOnly) return list.filter((c) => favorites.has(c.streamId))
     if (favorites.size === 0) return list
@@ -409,7 +422,22 @@ function App() {
     const rest: LiveStream[] = []
     for (const c of list) (favorites.has(c.streamId) ? favs : rest).push(c)
     return [...favs, ...rest]
-  }, [visibleChannels, channelFilter, favoritesOnly, favorites])
+  }, [visibleChannels, selectedCategoryId, channelFilter, favoritesOnly, favorites])
+
+  // Category options for the sidebar dropdown: only categories that actually
+  // have (non-hidden) channels, each with its live count, in the provider's
+  // category order.
+  const categoryOptions = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const c of visibleChannels) counts.set(c.categoryId, (counts.get(c.categoryId) ?? 0) + 1)
+    return categories
+      .map((cat) => ({ id: cat.categoryId, name: cat.categoryName, count: counts.get(cat.categoryId) ?? 0 }))
+      .filter((c) => c.count > 0)
+  }, [categories, visibleChannels])
+
+  const selectedCategoryName = selectedCategoryId
+    ? categoryOptions.find((c) => c.id === selectedCategoryId)?.name ?? null
+    : null
 
   // Quick switching: ArrowUp/ArrowDown zap through the visible list,
   // Backspace swaps back to the previously tuned channel.
@@ -613,6 +641,10 @@ function App() {
                 filterText={channelFilter}
                 onFilterTextChange={setChannelFilter}
                 onHideChannel={hideChannel}
+                categories={categoryOptions}
+                selectedCategoryId={selectedCategoryId}
+                selectedCategoryName={selectedCategoryName}
+                onSelectCategory={setSelectedCategoryId}
               />
             </aside>
           )}

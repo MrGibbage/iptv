@@ -19,8 +19,11 @@ and got prevention (post-failure settle + optional software decoding) plus one-c
 in-app recovery, all confirmed fine by Skip in real use. The two remaining small
 backlog items — the VOD/series time scrubber and idle-based cursor show/hide — are also
 implemented and verified (2026-07-06); details under "VOD & Series" and "App shell /
-Windows feel". Next: build-order step 5, packaging/installer. Remaining backlog is only
-the two design-gated items (Live TV category browsing, theming). **Decided 2026-07-06
+Windows feel". Both design-gated items are now done too: **theming** (2026-07-06) and
+**Live TV category browsing** (2026-07-07), each after an approved design-preview
+artifact. Remaining backlog is just one small feature — an optional "search all
+movies/shows" scope toggle for VOD/series (see "VOD & Series") — then build-order step 5,
+packaging/installer, which is the last thing before v1 ships. **Decided 2026-07-06
 NOT to build** a hidden-titles section for VOD/series (parallel to live's hidden
 channels): VOD/series playback already runs the same mpv watchdog, so failures get the
 same Retry/Restart-player/software-decode handling as live — and unlike channel-surfing
@@ -80,14 +83,20 @@ from day one, and treat the provider URL itself as a secret (it embeds the accou
   No EPG dependency, so it can land whenever's convenient in step 3 — doesn't need to wait
   on EPG ingestion.
 - A sample playlist.m3u file is provided in the project directory
-- **Backlog, requested 2026-07-06, wants a design look before turning on:** category
-  browsing for Live TV, mirroring the VOD/series category sidebar. The API already
-  supports it (`getLiveCategories` in `electron/xtream.ts` is implemented and even
-  wired through IPC/preload, just never called from any UI). Skip's own read: search
-  is already blazing fast for getting to a known channel, so this would mainly help
-  discovery ("what do I have in Sports?"), not speed — wants to see a concrete design
-  before deciding whether it's worth the added sidebar clutter next to favorites/
-  search/hide controls that are already there.
+- **Category browsing for Live TV — implemented and verified 2026-07-07** (after a
+  3-option design-preview artifact; Skip picked the "dropdown filter" over a VOD-style
+  rail or a grouped list, precisely because search already handles known-channel access
+  and categories are only for occasional discovery — so the least-clutter option won).
+  A "Categories ▾" button in the sidebar toolbar (`src/components/ChannelList.tsx`,
+  between search and the ★ filter) opens a menu of categories with live counts; picking
+  one filters the list. **Purely client-side** — each channel already carries its
+  `categoryId` and the full list is already loaded, so switching categories is instant
+  (no re-fetch); `getLiveCategories` is now called (finally) just for the labels/counts.
+  Composes with the name filter and favorites-first sorting, and ↑/↓ zapping stays within
+  the selected category (they all walk the same `displayChannels`). The button doubles as
+  the active-filter indicator (dropped the mockup's separate chip row to keep it compact).
+  Only categories with (non-hidden) channels appear; selection is session state (resets to
+  All each launch), not persisted.
 
 ### EPG (the priority)
 - Virtualized channel × time grid (react-virtual or similar) — must stay smooth with
@@ -222,8 +231,9 @@ from day one, and treat the provider URL itself as a secret (it embeds the accou
     persists in `prefs.json` (`theme`, plus `customTheme` token map for a pasted theme).
     Known minor: brief flash of the default look on launch before the saved theme applies,
     since prefs load async (same as favorites/hidden) — easily eliminated later if wanted.
-  - Only the two design-gated backlog items remain now; **Live TV category browsing** is
-    the last one (see the Live TV section), then build-order step 5 (packaging).
+  - Both design-gated items are now done (theming here; Live TV category browsing on
+    2026-07-07, see the Live TV section). Only the optional VOD/series "search all" scope
+    toggle remains before build-order step 5 (packaging).
 
 ## v2 Scope (Recordings)
 
@@ -441,8 +451,13 @@ no channel would play until he Ctrl-C'd the app in the terminal and relaunched:
   Also decided this session NOT to add a hidden-titles section for VOD/series (see the
   Status note at top for the rationale).
 
+- **Live TV category browsing implemented and verified 2026-07-07** — the last
+  design-gated backlog item. Dropdown "Categories ▾" filter in the channel sidebar,
+  client-side off each channel's `categoryId`; see the Live TV section for the full
+  shape and why the dropdown won over a rail / grouped list.
+
 Key choices unchanged from the original plan: Electron + libmpv, Xtream Codes as the only
 provider format, EPG grid quality as the defining feature, recordings deferred to v2
 running server-side on docker-server (never client-side). Next concrete action is
-build-order step 5: packaging/installer. Remaining backlog is only the two design-gated
-items (Live TV category browsing, theming).
+build-order step 5: packaging/installer. Remaining backlog before it is just the optional
+VOD/series "search all" scope toggle (see "VOD & Series").

@@ -1,5 +1,11 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { LiveStream } from '../../electron/xtream'
+
+export interface CategoryOption {
+  id: string
+  name: string
+  count: number
+}
 
 interface ChannelListProps {
   channels: LiveStream[]
@@ -15,6 +21,10 @@ interface ChannelListProps {
   filterText: string
   onFilterTextChange: (text: string) => void
   onHideChannel: (streamId: number) => void
+  categories: CategoryOption[]
+  selectedCategoryId: string | null
+  selectedCategoryName: string | null
+  onSelectCategory: (categoryId: string | null) => void
 }
 
 function ChannelList({
@@ -31,13 +41,35 @@ function ChannelList({
   filterText,
   onFilterTextChange,
   onHideChannel,
+  categories,
+  selectedCategoryId,
+  selectedCategoryName,
+  onSelectCategory,
 }: ChannelListProps) {
   const selectedRef = useRef<HTMLDivElement>(null)
+  const catRef = useRef<HTMLDivElement>(null)
+  const [catMenuOpen, setCatMenuOpen] = useState(false)
 
   // Keep the tuned channel visible while zapping with the keyboard.
   useEffect(() => {
     selectedRef.current?.scrollIntoView({ block: 'nearest' })
   }, [selectedStreamId])
+
+  // Close the category menu on any click outside it.
+  useEffect(() => {
+    if (!catMenuOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (catRef.current && !catRef.current.contains(e.target as Node)) setCatMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [catMenuOpen])
+
+  const chooseCategory = (categoryId: string | null) => {
+    onSelectCategory(categoryId)
+    setCatMenuOpen(false)
+  }
+  const allCount = categories.reduce((n, c) => n + c.count, 0)
 
   return (
     <div className="channel-panel">
@@ -49,6 +81,40 @@ function ChannelList({
           value={filterText}
           onChange={(e) => onFilterTextChange(e.target.value)}
         />
+        {categories.length > 0 && (
+          <div className="channel-cat" ref={catRef}>
+            <button
+              className={`channel-cat-btn${selectedCategoryId ? ' active' : ''}`}
+              title="Filter by category"
+              onClick={() => setCatMenuOpen((o) => !o)}
+            >
+              <span className="channel-cat-label">{selectedCategoryName ?? 'Categories'}</span>
+              <span className="channel-cat-caret">▾</span>
+            </button>
+            {catMenuOpen && (
+              <div className="channel-cat-menu">
+                <button
+                  className={`channel-cat-item${selectedCategoryId ? '' : ' sel'}`}
+                  onClick={() => chooseCategory(null)}
+                >
+                  <span className="channel-cat-item-name">All Channels</span>
+                  <span className="channel-cat-item-count">{allCount.toLocaleString()}</span>
+                </button>
+                <div className="channel-cat-sep" />
+                {categories.map((cat) => (
+                  <button
+                    key={cat.id}
+                    className={`channel-cat-item${selectedCategoryId === cat.id ? ' sel' : ''}`}
+                    onClick={() => chooseCategory(cat.id)}
+                  >
+                    <span className="channel-cat-item-name">{cat.name}</span>
+                    <span className="channel-cat-item-count">{cat.count.toLocaleString()}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <button
           className={`channel-fav-filter${favoritesOnly ? ' active' : ''}`}
           title={favoritesOnly ? 'Show all channels' : 'Show favorites only'}
