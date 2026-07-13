@@ -8,6 +8,12 @@ export interface Prefs {
   favoriteStreamIds: number[]
   hiddenStreamIds: number[]
   lastStreamId: number | null
+  // Shared Live TV / Guide category filter. Null means All Channels.
+  selectedLiveCategoryId: string | null
+  selectedVodCategoryId: string | null
+  selectedSeriesCategoryId: string | null
+  startupView: 'home' | 'live' | 'guide' | 'vod' | 'series'
+  dismissedHomeItems: string[]
   // When true, mpv decodes in software (hwdec=no) instead of on the GPU. Off
   // by default; a "maximum compatibility" escape hatch for the rare malformed
   // stream that can hang the hardware decoder (see electron/playback.ts).
@@ -34,6 +40,18 @@ export async function loadPrefs(): Promise<Prefs> {
       favoriteStreamIds: toNumberArray(raw.favoriteStreamIds),
       hiddenStreamIds: toNumberArray(raw.hiddenStreamIds),
       lastStreamId: typeof raw.lastStreamId === 'number' ? raw.lastStreamId : null,
+      selectedLiveCategoryId:
+        typeof raw.selectedLiveCategoryId === 'string' ? raw.selectedLiveCategoryId : null,
+      selectedVodCategoryId:
+        typeof raw.selectedVodCategoryId === 'string' ? raw.selectedVodCategoryId : null,
+      selectedSeriesCategoryId:
+        typeof raw.selectedSeriesCategoryId === 'string' ? raw.selectedSeriesCategoryId : null,
+      startupView: ['home', 'live', 'guide', 'vod', 'series'].includes(raw.startupView ?? '')
+        ? raw.startupView!
+        : 'live',
+      dismissedHomeItems: Array.isArray(raw.dismissedHomeItems)
+        ? raw.dismissedHomeItems.filter((key): key is string => typeof key === 'string')
+        : [],
       softwareDecoding: raw.softwareDecoding === true,
       theme: typeof raw.theme === 'string' ? raw.theme : 'system',
       customTheme:
@@ -46,6 +64,11 @@ export async function loadPrefs(): Promise<Prefs> {
       favoriteStreamIds: [],
       hiddenStreamIds: [],
       lastStreamId: null,
+      selectedLiveCategoryId: null,
+      selectedVodCategoryId: null,
+      selectedSeriesCategoryId: null,
+      startupView: 'live',
+      dismissedHomeItems: [],
       softwareDecoding: false,
       theme: 'system',
       customTheme: null,

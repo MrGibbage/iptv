@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { XtreamConfig, SeriesCategory, SeriesListItem, SeriesInfo, SeriesEpisode } from '../../electron/xtream'
 import type { ProgressMap } from '../../electron/progress-store'
 
 interface SeriesBrowserProps {
   config: XtreamConfig
   progress: ProgressMap
-  onPlay: (episode: SeriesEpisode, seriesName: string, resumeSecs: number) => void
+  onPlay: (episode: SeriesEpisode, seriesName: string, seriesCover: string, resumeSecs: number) => void
+  initialCategoryId: string | null
+  onCategoryChange: (categoryId: string) => void
 }
 
 function formatDuration(secs: number): string {
@@ -14,7 +16,8 @@ function formatDuration(secs: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`
 }
 
-function SeriesBrowser({ config, progress, onPlay }: SeriesBrowserProps) {
+function SeriesBrowser({ config, progress, onPlay, initialCategoryId, onCategoryChange }: SeriesBrowserProps) {
+  const initialCategoryIdRef = useRef(initialCategoryId)
   const [categories, setCategories] = useState<SeriesCategory[]>([])
   const [categoriesLoading, setCategoriesLoading] = useState(true)
   const [categoriesError, setCategoriesError] = useState<string | null>(null)
@@ -24,6 +27,11 @@ function SeriesBrowser({ config, progress, onPlay }: SeriesBrowserProps) {
   const [seriesLoading, setSeriesLoading] = useState(false)
   const [seriesError, setSeriesError] = useState<string | null>(null)
   const [filterText, setFilterText] = useState('')
+  const [searchScope, setSearchScope] = useState<'category' | 'all'>('category')
+
+  const [allSeries, setAllSeries] = useState<SeriesListItem[] | null>(null)
+  const [allSeriesLoading, setAllSeriesLoading] = useState(false)
+  const [allSeriesError, setAllSeriesError] = useState<string | null>(null)
 
   const [selectedSeries, setSelectedSeries] = useState<SeriesListItem | null>(null)
   const [info, setInfo] = useState<SeriesInfo | null>(null)
@@ -39,7 +47,10 @@ function SeriesBrowser({ config, progress, onPlay }: SeriesBrowserProps) {
       .then((cats) => {
         if (cancelled) return
         setCategories(cats)
-        if (cats.length > 0) setSelectedCategoryId(cats[0].categoryId)
+        if (cats.length > 0) {
+          const restored = cats.find((cat) => cat.categoryId === initialCategoryIdRef.current)
+          setSelectedCategoryId(restored?.categoryId ?? cats[0].categoryId)
+        }
       })
       .catch((err) => {
         if (!cancelled) setCategoriesError(err instanceof Error ? err.message : String(err))
@@ -97,7 +108,45 @@ function SeriesBrowser({ config, progress, onPlay }: SeriesBrowserProps) {
   }, [config, selectedSeries])
 
   const text = filterText.trim().toLowerCase()
-  const visibleSeries = text ? seriesList.filter((s) => s.name.toLowerCase().includes(text)) : seriesList
+  const searchingAll = Boolean(text) && searchScope === 'all'
+
+  useEffect(() => {
+    if (!searchingAll || allSeries !== null || allSeriesLoading) return
+    let cancelled = false
+    setAllSeriesLoading(true)
+    setAllSeriesError(null)
+    window.xtream
+      .getSeriesList(config)
+      .then((items) => {
+        if (!cancelled) setAllSeries(items)
+      })
+      .catch((err) => {
+        if (!cancelled) setAllSeriesError(err instanceof Error ? err.message : String(err))
+      })
+      .finally(() => {
+        if (!cancelled) setAllSeriesLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+    // Deliberately omits allSeries/allSeriesLoading: setAllSeriesLoading(true)
+    // above would otherwise retrigger this effect and cancel its own in-flight
+    // request before the response arrives (cancelled flips true on the stale
+    // closure, so the resolved data gets silently dropped).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config, searchingAll])
+
+  const categoryNameById = useMemo(() => {
+    const map = new Map<string, string>()
+    categories.forEach((c) => map.set(c.categoryId, c.categoryName))
+    return map
+  }, [categories])
+
+  const visibleSeries = !text
+    ? seriesList
+    : searchingAll
+      ? (allSeries ?? []).filter((s) => s.name.toLowerCase().includes(text))
+      : seriesList.filter((s) => s.name.toLowerCase().includes(text))
 
   const closeDetail = () => setSelectedSeries(null)
 
@@ -105,7 +154,7 @@ function SeriesBrowser({ config, progress, onPlay }: SeriesBrowserProps) {
 
   const play = (episode: SeriesEpisode, resumeSecs: number) => {
     if (!selectedSeries) return
-    onPlay(episode, selectedSeries.name, resumeSecs)
+    onPlay(episode, selectedSeries.name, selectedSeries.cover, resumeSecs)
     closeDetail()
   }
 
@@ -122,7 +171,10 @@ function SeriesBrowser({ config, progress, onPlay }: SeriesBrowserProps) {
               <div
                 key={cat.categoryId}
                 className={`vod-category-row${cat.categoryId === selectedCategoryId ? ' selected' : ''}`}
-                onClick={() => setSelectedCategoryId(cat.categoryId)}
+                onClick={() => {
+                  setSelectedCategoryId(cat.categoryId)
+                  onCategoryChange(cat.categoryId)
+                }}
               >
                 {cat.categoryName}
               </div>
@@ -140,12 +192,32 @@ function SeriesBrowser({ config, progress, onPlay }: SeriesBrowserProps) {
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
           />
+          {text && (
+            <div className="vod-scope-toggle">
+              <button
+                className={`vod-scope-btn${searchScope === 'category' ? ' active' : ''}`}
+                onClick={() => setSearchScope('category')}
+              >
+                This category
+              </button>
+              <button
+                className={`vod-scope-btn${searchScope === 'all' ? ' active' : ''}`}
+                onClick={() => setSearchScope('all')}
+              >
+                All
+              </button>
+            </div>
+          )}
         </div>
 
         {seriesLoading ? (
           <p className="channel-hint">Loading shows…</p>
         ) : seriesError ? (
           <p className="channel-hint channel-error">Failed to load shows: {seriesError}</p>
+        ) : searchingAll && allSeriesLoading ? (
+          <p className="channel-hint">Loading full library…</p>
+        ) : searchingAll && allSeriesError ? (
+          <p className="channel-hint channel-error">Failed to load full library: {allSeriesError}</p>
         ) : visibleSeries.length === 0 ? (
           <p className="channel-hint">No shows match.</p>
         ) : (
@@ -160,6 +232,9 @@ function SeriesBrowser({ config, progress, onPlay }: SeriesBrowserProps) {
                 <div className="vod-poster-title" title={item.name}>
                   {item.name}
                 </div>
+                {searchingAll && (
+                  <div className="vod-poster-category">{categoryNameById.get(item.categoryId) ?? ''}</div>
+                )}
               </div>
             ))}
           </div>

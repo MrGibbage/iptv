@@ -1,7 +1,5 @@
 import type Mpv from 'electron-libmpv'
-import path from 'node:path'
-import fs from 'node:fs'
-import { log, logsDir } from './logger'
+import { log } from './logger'
 
 // Playback watchdog — strictly event-driven. mpv property reads
 // (getRawProperty) are SYNCHRONOUS and block the Electron main process while
@@ -94,14 +92,9 @@ export function init(
 }
 
 // Runtime mpv options, set once the player is attached (setProperty is async
-// in the patched addon): fail hung network reads after 10 s instead of mpv's
-// 60 s default; write mpv's own log to userData/logs/mpv.log (truncated on
-// each launch) but keep it to lifecycle lines for cplayer (loadfile/opening/
-// playback-restart — useful for diagnosing a wedge) while dropping the
-// verbose per-frame/shader spam every other module emits at the same level.
+// in the patched addon). Raw mpv file logging stays disabled because its
+// lifecycle output can include the credential-bearing Xtream URL.
 export function configureMpv(): void {
-  player?.property('log-file', path.join(logsDir(), 'mpv.log'))
-  player?.property('msg-level', 'all=warn,cplayer=v')
   player?.property('network-timeout', '10')
   applyHwdec()
   // mpv's ytdl_hook script shells out to youtube-dl/yt-dlp for URLs it
@@ -186,7 +179,7 @@ export function play(url: string, streamId?: number): void {
 
 function doLoad(url: string): void {
   if (!player) return
-  log('playback', `loadfile ${url}`)
+  log('playback', `load requested streamId=${currentStreamId ?? 'media'}`)
   player.command('loadfile', url, 'replace')
   setPhase('loading')
   openTimer = setTimeout(() => fail('Stream did not start'), OPEN_TIMEOUT_MS)
@@ -256,36 +249,7 @@ function fail(reason: string): void {
   lastFailAt = Date.now()
   player?.command('stop')
   armWedgeWatch()
-  const detail = lastMpvError()
-  const message = detail && !reason.includes(detail) ? `${reason} — ${detail}` : reason
+  const message = reason
   log('playback', `error: ${message}`)
   setPhase('error', message)
-}
-
-// Pull the most recent error/fatal line from the tail of mpv's log so the
-// user sees mpv's actual reason (403, connection refused, timeout, …).
-function lastMpvError(): string | null {
-  try {
-    const file = path.join(logsDir(), 'mpv.log')
-    const size = fs.statSync(file).size
-    const len = Math.min(size, 64 * 1024)
-    const buf = Buffer.alloc(len)
-    const fd = fs.openSync(file, 'r')
-    try {
-      fs.readSync(fd, buf, 0, len, size - len)
-    } finally {
-      fs.closeSync(fd)
-    }
-    const lines = buf.toString('utf-8').split(/\r?\n/)
-    // mpv log-file lines look like "[ 12.3][e][ffmpeg] tcp: ...": [e]rror/[f]atal.
-    const isError = (l: string) => /^\[[^\]]*\]\[[ef]\]/.test(l)
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (isError(lines[i])) {
-        return lines[i].replace(/^\[[^\]]*\]\[[ef]\]/, '').trim()
-      }
-    }
-  } catch {
-    // no log yet, or unreadable — the generic reason still gets shown
-  }
-  return null
 }

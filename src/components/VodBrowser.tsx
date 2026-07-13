@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { XtreamConfig, VodCategory, VodStream, VodInfo } from '../../electron/xtream'
 import type { ProgressMap } from '../../electron/progress-store'
 
@@ -6,6 +6,8 @@ interface VodBrowserProps {
   config: XtreamConfig
   progress: ProgressMap
   onPlay: (item: VodStream, resumeSecs: number) => void
+  initialCategoryId: string | null
+  onCategoryChange: (categoryId: string) => void
 }
 
 function formatDuration(secs: number): string {
@@ -14,7 +16,8 @@ function formatDuration(secs: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`
 }
 
-function VodBrowser({ config, progress, onPlay }: VodBrowserProps) {
+function VodBrowser({ config, progress, onPlay, initialCategoryId, onCategoryChange }: VodBrowserProps) {
+  const initialCategoryIdRef = useRef(initialCategoryId)
   const [categories, setCategories] = useState<VodCategory[]>([])
   const [categoriesLoading, setCategoriesLoading] = useState(true)
   const [categoriesError, setCategoriesError] = useState<string | null>(null)
@@ -24,6 +27,11 @@ function VodBrowser({ config, progress, onPlay }: VodBrowserProps) {
   const [streamsLoading, setStreamsLoading] = useState(false)
   const [streamsError, setStreamsError] = useState<string | null>(null)
   const [filterText, setFilterText] = useState('')
+  const [searchScope, setSearchScope] = useState<'category' | 'all'>('category')
+
+  const [allStreams, setAllStreams] = useState<VodStream[] | null>(null)
+  const [allStreamsLoading, setAllStreamsLoading] = useState(false)
+  const [allStreamsError, setAllStreamsError] = useState<string | null>(null)
 
   const [selectedItem, setSelectedItem] = useState<VodStream | null>(null)
   const [info, setInfo] = useState<VodInfo | null>(null)
@@ -38,7 +46,10 @@ function VodBrowser({ config, progress, onPlay }: VodBrowserProps) {
       .then((cats) => {
         if (cancelled) return
         setCategories(cats)
-        if (cats.length > 0) setSelectedCategoryId(cats[0].categoryId)
+        if (cats.length > 0) {
+          const restored = cats.find((cat) => cat.categoryId === initialCategoryIdRef.current)
+          setSelectedCategoryId(restored?.categoryId ?? cats[0].categoryId)
+        }
       })
       .catch((err) => {
         if (!cancelled) setCategoriesError(err instanceof Error ? err.message : String(err))
@@ -93,7 +104,45 @@ function VodBrowser({ config, progress, onPlay }: VodBrowserProps) {
   }, [config, selectedItem])
 
   const text = filterText.trim().toLowerCase()
-  const visibleStreams = text ? streams.filter((s) => s.name.toLowerCase().includes(text)) : streams
+  const searchingAll = Boolean(text) && searchScope === 'all'
+
+  useEffect(() => {
+    if (!searchingAll || allStreams !== null || allStreamsLoading) return
+    let cancelled = false
+    setAllStreamsLoading(true)
+    setAllStreamsError(null)
+    window.xtream
+      .getVodStreams(config)
+      .then((items) => {
+        if (!cancelled) setAllStreams(items)
+      })
+      .catch((err) => {
+        if (!cancelled) setAllStreamsError(err instanceof Error ? err.message : String(err))
+      })
+      .finally(() => {
+        if (!cancelled) setAllStreamsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+    // Deliberately omits allStreams/allStreamsLoading: setAllStreamsLoading(true)
+    // above would otherwise retrigger this effect and cancel its own in-flight
+    // request before the response arrives (cancelled flips true on the stale
+    // closure, so the resolved data gets silently dropped).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config, searchingAll])
+
+  const categoryNameById = useMemo(() => {
+    const map = new Map<string, string>()
+    categories.forEach((c) => map.set(c.categoryId, c.categoryName))
+    return map
+  }, [categories])
+
+  const visibleStreams = !text
+    ? streams
+    : searchingAll
+      ? (allStreams ?? []).filter((s) => s.name.toLowerCase().includes(text))
+      : streams.filter((s) => s.name.toLowerCase().includes(text))
 
   const closeDetail = () => setSelectedItem(null)
 
@@ -118,7 +167,10 @@ function VodBrowser({ config, progress, onPlay }: VodBrowserProps) {
               <div
                 key={cat.categoryId}
                 className={`vod-category-row${cat.categoryId === selectedCategoryId ? ' selected' : ''}`}
-                onClick={() => setSelectedCategoryId(cat.categoryId)}
+                onClick={() => {
+                  setSelectedCategoryId(cat.categoryId)
+                  onCategoryChange(cat.categoryId)
+                }}
               >
                 {cat.categoryName}
               </div>
@@ -136,12 +188,32 @@ function VodBrowser({ config, progress, onPlay }: VodBrowserProps) {
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
           />
+          {text && (
+            <div className="vod-scope-toggle">
+              <button
+                className={`vod-scope-btn${searchScope === 'category' ? ' active' : ''}`}
+                onClick={() => setSearchScope('category')}
+              >
+                This category
+              </button>
+              <button
+                className={`vod-scope-btn${searchScope === 'all' ? ' active' : ''}`}
+                onClick={() => setSearchScope('all')}
+              >
+                All
+              </button>
+            </div>
+          )}
         </div>
 
         {streamsLoading ? (
           <p className="channel-hint">Loading titles…</p>
         ) : streamsError ? (
           <p className="channel-hint channel-error">Failed to load titles: {streamsError}</p>
+        ) : searchingAll && allStreamsLoading ? (
+          <p className="channel-hint">Loading full library…</p>
+        ) : searchingAll && allStreamsError ? (
+          <p className="channel-hint channel-error">Failed to load full library: {allStreamsError}</p>
         ) : visibleStreams.length === 0 ? (
           <p className="channel-hint">No titles match.</p>
         ) : (
@@ -166,6 +238,9 @@ function VodBrowser({ config, progress, onPlay }: VodBrowserProps) {
                   <div className="vod-poster-title" title={item.name}>
                     {item.name}
                   </div>
+                  {searchingAll && (
+                    <div className="vod-poster-category">{categoryNameById.get(item.categoryId) ?? ''}</div>
+                  )}
                 </div>
               )
             })}

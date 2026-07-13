@@ -7,6 +7,7 @@ import { Readable } from 'node:stream'
 import type { XtreamConfig } from './xtream'
 import * as epgDb from './epg-db'
 import { parseXmltvFile } from './xmltv'
+import { log } from './logger'
 
 export interface EpgStatus {
   state: 'idle' | 'refreshing' | 'error'
@@ -119,6 +120,8 @@ export async function refresh(config: XtreamConfig, force = false): Promise<EpgS
 
   refreshing = true
   lastError = null
+  const startedAt = Date.now()
+  log('epg', `refresh started force=${force}`)
 
   // Dev override: point IPTV_EPG_FILE at a local XMLTV file to skip the
   // provider download (see README).
@@ -140,8 +143,11 @@ export async function refresh(config: XtreamConfig, force = false): Promise<EpgS
     emitStatus()
     await ingestFile(sourceFile)
     epgDb.setMeta(LAST_REFRESH_KEY, String(Date.now()))
+    const counts = epgDb.getCounts()
+    log('epg', `refresh completed in ${Date.now() - startedAt}ms channels=${counts.channels} programmes=${counts.programmes}`)
   } catch (err) {
     lastError = err instanceof Error ? err.message : String(err)
+    log('epg', `refresh failed in ${Date.now() - startedAt}ms: ${lastError}`)
   } finally {
     refreshing = false
     currentPhase = null

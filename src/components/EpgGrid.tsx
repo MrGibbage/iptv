@@ -3,6 +3,8 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import type { LiveStream, XtreamConfig } from '../../electron/xtream'
 import type { EpgBounds, EpgProgramme, EpgSearchResult } from '../../electron/epg-db'
 import type { EpgStatus } from '../../electron/epg'
+import CategoryFilter from './CategoryFilter'
+import type { CategoryOption } from './ChannelList'
 import './epg.css'
 
 // Keep CH_COL_W in sync with .epg-channel-cell width in epg.css.
@@ -53,9 +55,13 @@ interface EpgGridProps {
   hiddenEpgChannelIds: Set<string>
   tunedStreamId: number | null
   onTune: (stream: LiveStream) => void
+  categories: CategoryOption[]
+  selectedCategoryId: string | null
+  selectedCategoryName: string | null
+  onSelectCategory: (categoryId: string | null) => void
 }
 
-function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune }: EpgGridProps) {
+function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune, categories, selectedCategoryId, selectedCategoryName, onSelectCategory }: EpgGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [dayStartMs, setDayStartMs] = useState(() => localMidnight(Date.now()))
   const [programmes, setProgrammes] = useState<Map<string, EpgProgramme[]>>(new Map())
@@ -73,6 +79,10 @@ function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune 
   const dayMinutes = (dayEndMs - dayStartMs) / 60_000
   const contentWidth = CH_COL_W + dayMinutes * PX_PER_MIN
   const searchActive = searchQuery.trim().length > 0
+  const visibleEpgChannelIds = useMemo(
+    () => new Set(channels.flatMap((channel) => (channel.epgChannelId ? [channel.epgChannelId] : []))),
+    [channels],
+  )
 
   const rowVirtualizer = useVirtualizer({
     count: channels.length,
@@ -83,6 +93,12 @@ function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune 
   const virtualItems = rowVirtualizer.getVirtualItems()
   const visibleStart = virtualItems[0]?.index ?? 0
   const visibleEnd = virtualItems[virtualItems.length - 1]?.index ?? -1
+
+  // Keep the current time position while returning the newly selected
+  // category to its first channel row.
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0
+  }, [selectedCategoryId])
 
   const resetProgrammeCache = () => {
     requestedIdsRef.current = new Set()
@@ -162,11 +178,11 @@ function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune 
     }
     const timer = setTimeout(() => {
       window.epg.search(searchQuery.trim()).then((results) => {
-        setSearchResults(results.filter((r) => !hiddenEpgChannelIds.has(r.channelId)))
+        setSearchResults(results.filter((r) => visibleEpgChannelIds.has(r.channelId) && !hiddenEpgChannelIds.has(r.channelId)))
       })
     }, 200)
     return () => clearTimeout(timer)
-  }, [searchQuery, searchActive, hiddenEpgChannelIds])
+  }, [searchQuery, searchActive, hiddenEpgChannelIds, visibleEpgChannelIds])
 
   const scrollToTime = (timeMs: number) => {
     const el = scrollRef.current
@@ -265,6 +281,12 @@ function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune 
           ▶
         </button>
         <button onClick={jumpToNow}>Now</button>
+        <CategoryFilter
+          categories={categories}
+          selectedCategoryId={selectedCategoryId}
+          selectedCategoryName={selectedCategoryName}
+          onSelectCategory={onSelectCategory}
+        />
         <input
           className="epg-search-input"
           type="search"

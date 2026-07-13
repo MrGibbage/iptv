@@ -7,10 +7,15 @@ release/
 .env
 *.log
 
+# Runtime diagnostics normally live under Electron userData, but keep any
+# copied/local troubleshooting artifacts out of the public repository too.
+logs/
+diagnostics/
+iptv-diagnostics-*.txt
+
 # Sample Xtream data — contains real account URL/credentials, never commit
 playlist.m3u
 sonix.xml
 
 # libmpv runtime — large third-party binary, not source; see README for setup
 libmpv-2.dll
-

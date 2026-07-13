@@ -1,17 +1,19 @@
-import { app, BrowserWindow, ipcMain, Menu, screen } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, screen, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 import path from 'node:path'
+import os from 'node:os'
 import Mpv from 'electron-libmpv'
 import type { XtreamConfig } from './xtream'
 import * as xtream from './xtream'
 import * as settingsStore from './settings-store'
 import * as prefsStore from './prefs-store'
 import * as progressStore from './progress-store'
+import * as windowStateStore from './window-state-store'
 import * as epg from './epg'
 import * as epgDb from './epg-db'
 import * as playback from './playback'
-import { log, rotateLogs } from './logger'
+import { createDiagnosticReport, log, logsDir, rotateLogs } from './logger'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -47,19 +49,85 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 
 let win: BrowserWindow | null
 let player: InstanceType<typeof Mpv> | null = null
+let rendererClosing = false
 
-function createWindow() {
+// Native mpv/EPG callbacks can arrive during BrowserWindow teardown. Calling
+// webContents.send after Chromium has destroyed the target throws from inside
+// the N-API callback, which Node reports as DEP0168. Treat renderer delivery as
+// best-effort at this boundary: shutdown events have no UI consumer anyway.
+function sendToRenderer(target: BrowserWindow | null, channel: string, ...args: unknown[]): boolean {
+  if (rendererClosing || !target || target.isDestroyed() || target.webContents.isDestroyed()) return false
+  try {
+    target.webContents.send(channel, ...args)
+    return true
+  } catch (err) {
+    // Do not let a renderer teardown race escape through a native callback.
+    log('main', `renderer send skipped (${channel}): ${err instanceof Error ? err.message : String(err)}`)
+    return false
+  }
+}
+
+async function loggedOperation<T>(name: string, operation: () => Promise<T>, summarize?: (result: T) => string): Promise<T> {
+  const startedAt = Date.now()
+  try {
+    const result = await operation()
+    const summary = summarize?.(result)
+    log('operation', `${name} completed in ${Date.now() - startedAt}ms${summary ? ` ${summary}` : ''}`)
+    return result
+  } catch (err) {
+    log('operation', `${name} failed in ${Date.now() - startedAt}ms: ${err instanceof Error ? err.message : String(err)}`)
+    throw err
+  }
+}
+
+async function createWindow() {
+  rendererClosing = false
+  const savedWindowState = await windowStateStore.loadWindowState()
   win = new BrowserWindow({
     title: "Skip's IPTV Viewer",
     icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
+    ...savedWindowState.bounds,
+    minWidth: 800,
+    minHeight: 500,
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
     },
   })
 
+  if (savedWindowState.maximized) win.maximize()
+
+  let stateSaveTimer: ReturnType<typeof setTimeout> | null = null
+  const saveWindowState = () => {
+    if (!win || win.isFullScreen()) return
+    if (stateSaveTimer) clearTimeout(stateSaveTimer)
+    stateSaveTimer = setTimeout(() => {
+      if (!win || win.isFullScreen()) return
+      void windowStateStore.saveWindowState({
+        bounds: win.getNormalBounds(),
+        maximized: win.isMaximized(),
+      })
+    }, 250)
+  }
+  win.on('resize', saveWindowState)
+  win.on('move', saveWindowState)
+  win.on('maximize', saveWindowState)
+  win.on('unmaximize', saveWindowState)
+  win.on('close', () => {
+    rendererClosing = true
+    if (stateSaveTimer) clearTimeout(stateSaveTimer)
+    if (!win || win.isFullScreen()) return
+    void windowStateStore.saveWindowState({
+      bounds: win.getNormalBounds(),
+      maximized: win.isMaximized(),
+    })
+  })
+
   // Test active push message to Renderer-process.
   win.webContents.on('did-finish-load', () => {
-    win?.webContents.send('main-process-message', (new Date).toLocaleString())
+    sendToRenderer(win, 'main-process-message', (new Date).toLocaleString())
+  })
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+    log('renderer', `load failed code=${errorCode} description=${errorDescription}`)
   })
 
   // Electron's Ctrl+R/Ctrl+Shift+I only exist because of the default menu's
@@ -81,8 +149,8 @@ function createWindow() {
     else if (input.key.toLowerCase() === 'i' && input.shift) win?.webContents.toggleDevTools()
   })
 
-  win.on('enter-full-screen', () => win?.webContents.send('app:fullscreen-changed', true))
-  win.on('leave-full-screen', () => win?.webContents.send('app:fullscreen-changed', false))
+  win.on('enter-full-screen', () => sendToRenderer(win, 'app:fullscreen-changed', true))
+  win.on('leave-full-screen', () => sendToRenderer(win, 'app:fullscreen-changed', false))
 
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL)
@@ -103,19 +171,19 @@ function setupMpv(window: BrowserWindow) {
       // stall watchdog — see the addon patch — so this is free; no extra
       // synchronous getProperty poll). Drives the VOD/series scrubber.
       if (ev.event === 'property-change' && ev.name === 'time-pos' && typeof ev.value === 'number') {
-        window.webContents.send('mpv:timepos', ev.value)
+        sendToRenderer(window, 'mpv:timepos', ev.value)
       }
-      window.webContents.send('mpv:event')
+      sendToRenderer(window, 'mpv:event')
     },
   })
 
   playback.init(
     player,
     (status) => {
-      window.webContents.send('playback:status', status)
+      sendToRenderer(window, 'playback:status', status)
     },
     (streamId) => {
-      window.webContents.send('playback:confirmed', streamId)
+      sendToRenderer(window, 'playback:confirmed', streamId)
     },
   )
 
@@ -160,6 +228,25 @@ ipcMain.handle('app:toggleFullScreen', () => {
 
 ipcMain.handle('app:isFullScreen', () => win?.isFullScreen() ?? false)
 
+ipcMain.handle('app:openLogsFolder', async () => {
+  const error = await shell.openPath(logsDir())
+  if (error) log('diagnostics', `open logs folder failed: ${error}`)
+})
+
+ipcMain.handle('app:createDiagnosticReport', () => {
+  const report = createDiagnosticReport({
+    appVersion: app.getVersion(),
+    packaged: app.isPackaged,
+    platform: `${process.platform} ${os.release()} ${process.arch}`,
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+  })
+  log('diagnostics', 'sanitized diagnostic report created')
+  shell.showItemInFolder(report)
+  return report
+})
+
 // Global cursor position, polled by the renderer to drive idle-based
 // cursor/scrubber hiding in theater mode. Works even while the pointer is over
 // mpv's native child window (which swallows DOM mouse events, so a renderer
@@ -196,16 +283,16 @@ ipcMain.handle('app:relaunch', () => {
   process.exit(0)
 })
 
-ipcMain.handle('xtream:testConnection', (_event, config: XtreamConfig) => {
-  return xtream.testConnection(config)
+ipcMain.handle('xtream:testConnection', async (_event, config: XtreamConfig) => {
+  return loggedOperation('account test', () => xtream.testConnection(config), (result) => `result=${result.ok ? 'passed' : 'failed'}`)
 })
 
 ipcMain.handle('xtream:getLiveCategories', (_event, config: XtreamConfig) => {
-  return xtream.getLiveCategories(config)
+  return loggedOperation('load live categories', () => xtream.getLiveCategories(config), (items) => `count=${items.length}`)
 })
 
 ipcMain.handle('xtream:getLiveStreams', (_event, config: XtreamConfig, categoryId?: string) => {
-  return xtream.getLiveStreams(config, categoryId)
+  return loggedOperation('load live streams', () => xtream.getLiveStreams(config, categoryId), (items) => `count=${items.length}`)
 })
 
 ipcMain.handle('xtream:buildLiveStreamUrl', (_event, config: XtreamConfig, streamId: number) => {
@@ -213,11 +300,11 @@ ipcMain.handle('xtream:buildLiveStreamUrl', (_event, config: XtreamConfig, strea
 })
 
 ipcMain.handle('xtream:getVodCategories', (_event, config: XtreamConfig) => {
-  return xtream.getVodCategories(config)
+  return loggedOperation('load VOD categories', () => xtream.getVodCategories(config), (items) => `count=${items.length}`)
 })
 
 ipcMain.handle('xtream:getVodStreams', (_event, config: XtreamConfig, categoryId?: string) => {
-  return xtream.getVodStreams(config, categoryId)
+  return loggedOperation('load VOD streams', () => xtream.getVodStreams(config, categoryId), (items) => `count=${items.length}`)
 })
 
 ipcMain.handle('xtream:getVodInfo', (_event, config: XtreamConfig, vodId: number) => {
@@ -232,11 +319,11 @@ ipcMain.handle(
 )
 
 ipcMain.handle('xtream:getSeriesCategories', (_event, config: XtreamConfig) => {
-  return xtream.getSeriesCategories(config)
+  return loggedOperation('load series categories', () => xtream.getSeriesCategories(config), (items) => `count=${items.length}`)
 })
 
 ipcMain.handle('xtream:getSeriesList', (_event, config: XtreamConfig, categoryId?: string) => {
-  return xtream.getSeriesList(config, categoryId)
+  return loggedOperation('load series list', () => xtream.getSeriesList(config, categoryId), (items) => `count=${items.length}`)
 })
 
 ipcMain.handle('xtream:getSeriesInfo', (_event, config: XtreamConfig, seriesId: number) => {
@@ -255,7 +342,7 @@ ipcMain.handle('settings:load', () => {
 })
 
 ipcMain.handle('settings:save', (_event, config: XtreamConfig) => {
-  return settingsStore.saveConfig(config)
+  return loggedOperation('save account settings', () => settingsStore.saveConfig(config))
 })
 
 ipcMain.handle('prefs:load', () => {
@@ -295,8 +382,24 @@ ipcMain.handle('epg:getBounds', () => {
 })
 
 epg.onStatusChange((status) => {
-  if (status.state === 'error' && status.error) log('epg', `refresh failed: ${status.error}`)
-  win?.webContents.send('epg:status', status)
+  sendToRenderer(win, 'epg:status', status)
+})
+
+process.on('uncaughtException', (err) => {
+  log('crash', `uncaught exception: ${err.stack ?? err.message}`)
+  setTimeout(() => process.exit(1), 100)
+})
+
+process.on('unhandledRejection', (reason) => {
+  log('crash', `unhandled rejection: ${reason instanceof Error ? reason.stack ?? reason.message : String(reason)}`)
+})
+
+app.on('render-process-gone', (_event, _webContents, details) => {
+  log('crash', `renderer gone reason=${details.reason} exitCode=${details.exitCode}`)
+})
+
+app.on('child-process-gone', (_event, details) => {
+  log('crash', `child process gone type=${details.type} reason=${details.reason} exitCode=${details.exitCode}`)
 })
 
 // Refresh the EPG cache on startup when stale (TTL lives in epg.ts), then
@@ -335,7 +438,10 @@ app.on('activate', () => {
 
 app.whenReady().then(() => {
   rotateLogs()
-  log('main', 'app started')
+  log(
+    'main',
+    `app started version=${app.getVersion()} packaged=${app.isPackaged} platform=${process.platform} ${os.release()} ${process.arch} electron=${process.versions.electron} node=${process.versions.node}`,
+  )
   createWindow()
   refreshEpgIfConfigured()
   setInterval(refreshEpgIfConfigured, 60 * 60 * 1000)

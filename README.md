@@ -1,113 +1,290 @@
-# IPTV Viewer
+# Skip's IPTV Viewer
 
-Custom Windows IPTV client (Electron + React + TypeScript). See [PLAN.md](./PLAN.md)
-for architecture, scope, and build order.
+**BETA v0.1**
 
-## Dev setup
+A modern Windows IPTV application for Xtream-compatible providers. Skip's IPTV Viewer
+combines Live TV, a fast electronic programme guide, movies, TV series, resume playback,
+favorites, and a personalized Home screen without the dated interface common to many
+desktop IPTV clients.
 
-Playback uses [electron-libmpv](https://www.npmjs.com/package/electron-libmpv), a native
-addon that embeds libmpv directly into the Electron window (Windows only). Its build and
-runtime files are gitignored (large binaries, not source) and must be set up manually:
+> Beta software: core viewing features are working, but this release is still completing
+> its formal release-readiness and clean-machine validation process. If something goes
+> wrong, the app can create a sanitized diagnostic report from Settings.
 
-1. Install Visual Studio Build Tools with the "Desktop development with C++" workload
-   (needed by node-gyp to compile the native addon).
-2. Download a libmpv dev build for Windows from the
-   [mpv-player-windows SourceForge project](https://sourceforge.net/projects/mpv-player-windows/files/libmpv/)
-   (an `x86_64` or `x86_64-v3` `.7z`; `v3` needs a CPU with AVX2, which any Ryzen/Core CPU
-   from the last ~8 years has).
-3. Extract it into `C:\mpv-dev` so it looks like:
-   ```
-   C:\mpv-dev\
-     include\mpv\*.h
-     x86_64\libmpv-2.dll.a   (rename from libmpv.dll.a)
-     libmpv-2.dll
-   ```
-4. Copy `C:\mpv-dev\libmpv-2.dll` into this project's root directory (next to
-   `package.json`) — required for the dev server / `electron .` to find it at runtime.
+## Highlights
+
+- Fast virtualized TV Guide designed for thousands of channels
+- Guide search across channel names, programme titles, and descriptions
+- Live TV categories, favorites, channel search, hiding, and keyboard zapping
+- Shared category context between Live TV and Guide
+- Movie and TV Show browsers with categories, posters, details, and library-wide search
+- Resume playback and progress indicators for movies and episodes
+- Home screen with favorite channels and unfinished media
+- Full-screen cinema mode with idle cursor and control hiding
+- Multiple built-in themes plus custom JSON themes
+- Playback watchdog, retry handling, software-decoding fallback, and one-click recovery
+- Configurable startup screen and remembered browsing categories
+- Remembered window size, position, and maximized state
+- Privacy-safe logs and exportable diagnostic reports
+
+## Requirements
+
+- Windows 10 or Windows 11, 64-bit
+- An active Xtream-compatible IPTV account
+- Internet access to the provider
+- A GPU capable of normal Windows video playback, or a CPU suitable for software decoding
+
+The application does not provide channels, movies, television shows, subscriptions, or
+credentials. Users must supply their own lawful provider account.
+
+## Installation
+
+1. Download the BETA v0.1 Windows installer from the project's
+   [GitHub Releases](https://github.com/MrGibbage/iptv/releases) page.
+2. Run `IPTV Viewer-Windows-0.1.0-Setup.exe`.
+3. Choose the installation directory when prompted.
+4. Launch **IPTV Viewer** from the Start menu or desktop shortcut.
+
+The installer is per-user and does not require a system-wide installation. Uninstalling
+the application retains account settings, preferences, watch progress, and Guide cache so
+they remain available after reinstalling.
+
+## First-Time Setup
+
+1. Open **Settings**.
+2. Enter the provider's server URL, username, and password.
+3. Select **Test Connection**.
+4. Save becomes available only after the current values pass the connection test.
+5. Select **Save** and allow the channel and Guide data to load.
+
+Provider credentials remain on the local Windows account. Authenticated URLs and account
+credentials are removed from application logs and diagnostic reports.
+
+## Home
+
+Home is a quick starting point for:
+
+- Favorite live channels
+- Unfinished movies
+- Recently watched/resumable TV episodes
+
+Selecting a favorite channel carries its category into Live TV, keeping the tuned channel
+visible in the sidebar. The **×** button removes an item from Home without deleting the
+favorite or watch progress. Restore dismissed cards from **Settings → Startup**.
+
+## Live TV
+
+### Categories and Search
+
+Use the category dropdown to filter the channel list. Category selection is shared with
+Guide and persists across restarts. Changing category returns the list to its first row.
+
+The search box filters channel names inside the active category. Filters compose with
+favorites and hidden channels.
+
+### Favorites
+
+Hover over a channel and select its star. Favorites appear first, and the **★** toolbar
+button switches to a favorites-only list.
+
+### Hidden Channels
+
+Hover over a channel and select **⊘** to remove a dead, incorrect, or unwanted channel
+from Live TV, Guide, and search. Restore channels from **Settings → Hidden Channels**.
+
+### Keyboard Controls
+
+| Key | Action |
+|---|---|
+| Up / Down | Previous or next channel in the visible filtered list |
+| Backspace | Return to the previously tuned channel |
+| F11 | Enter or leave full-screen cinema mode |
+| Escape | Leave full screen |
+| Tab | Switch between Live TV and Guide while full screen |
+
+Keyboard channel controls are disabled while typing in an input field.
+
+## Guide
+
+The Guide provides:
+
+- Channel-by-time grid with sticky headers
+- Current-time line and jump-to-now
+- Previous/next day navigation
+- Programme details and Watch actions
+- Search across channel, title, and description
+- Manual Guide refresh
+- The same category filter used by Live TV
+
+Selecting a channel in Guide tunes it and returns to Live TV without losing category
+context. Changing the Guide category resets vertical position while preserving the current
+horizontal time position.
+
+Guide data refreshes automatically when older than 12 hours and is checked hourly while
+the app remains open.
+
+## Movies and TV Shows
+
+Movies and TV Shows have independent category browsers. Each remembers its category across
+restarts.
+
+Search normally applies to the selected category. Once text is entered, choose **All** to
+search the complete provider library. Full-library results load on demand and are cached
+for the session.
+
+Movie details may include plot, cast, director, genre, rating, and release date. TV Show
+details include seasons and episodes when supplied by the provider.
+
+Playback progress is saved periodically. Unfinished titles offer Resume, while media
+played to near completion returns to a normal Play state.
+
+## Playback and Full Screen
+
+Live TV, movies, and episodes share one embedded libmpv player. Movies and episodes include
+a scrubber for seeking.
+
+Press **F11** or use the header control for cinema mode. Application chrome hides around
+the video, and the cursor and media controls hide after a few seconds without movement.
+Move the pointer to reveal them again.
+
+### Playback Failures
+
+IPTV streams vary widely in quality. The app monitors playback without blocking its user
+interface:
+
+- A stream that does not start in time reports an error.
+- A stream that stops advancing reports a stall.
+- Recoverable failures offer **Retry**.
+- An unresponsive player offers **Restart Player**.
+- **Settings → Playback → Maximum compatibility** disables GPU decoding when malformed
+  streams cause hardware-decoder problems.
+
+A channel becomes the automatic next-launch target only after playing successfully long
+enough to be considered safe.
+
+## Personalization
+
+### Startup Screen
+
+Choose the startup destination under **Settings → Startup**:
+
+- Home
+- Live TV
+- Live TV Guide
+- Movie List
+- TV Show List
+
+Only a Live TV startup automatically begins the remembered live channel. Other startup
+screens do not play hidden live audio.
+
+### Themes
+
+Choose System, Default Dark/Light, Catppuccin Mocha, Nord, Dracula, Tokyo Night, Rosé
+Pine, Rosé Pine Dawn, or Solarized Light. System follows the Windows color preference.
+Advanced users can paste a custom theme token map as JSON.
+
+### Window State
+
+The application remembers normal window size and position or maximized state. Cinema full
+screen is deliberately never restored after restarting. Saved coordinates are validated
+against connected displays to prevent an off-screen window after monitor changes.
+
+## Diagnostics and Privacy
+
+Open **Settings → Diagnostics** to:
+
+- Open the logs folder
+- Create a sanitized diagnostic report
+
+Logs contain concise lifecycle, provider-operation, Guide, playback, and crash events.
+They rotate at 2 MB with four older generations retained.
+
+The logger removes URLs, usernames, passwords, tokens, and authenticated playback paths.
+Diagnostic reports are sanitized a second time and include only logs plus basic application
+and Windows runtime versions. Raw mpv logging is disabled because it may expose complete
+authenticated stream URLs.
+
+When reporting a problem:
+
+1. Reproduce the issue if it is safe to do so.
+2. Open **Settings → Diagnostics**.
+3. Select **Create Diagnostic Report**.
+4. Send the generated text file with a short description of what happened.
+
+## Updating and Uninstalling
+
+Beta updates are published through
+[GitHub Releases](https://github.com/MrGibbage/iptv/releases). Install a newer version over
+the existing version to retain local preferences and progress.
+
+Uninstall from **Windows Settings → Apps → Installed apps**. Application data is retained
+by default. To remove it manually, delete the IPTV Viewer directory under the current
+Windows account's application-data folder after uninstalling.
+
+## Development
+
+### Stack
+
+- Electron
+- React and TypeScript
+- libmpv through a patched `electron-libmpv` native addon
+- better-sqlite3 and FTS5 for Guide storage/search
+- sax for streaming XMLTV ingestion
+- TanStack Virtual for Guide rows
+
+### Native Development Setup
+
+Playback requires a Windows libmpv development build and Visual Studio Build Tools with
+the **Desktop development with C++** workload.
+
+Extract libmpv into:
+
+```text
+C:\mpv-dev\
+  include\mpv\*.h
+  x86_64\libmpv-2.dll.a
+  libmpv-2.dll
+```
+
+Copy `libmpv-2.dll` to the repository root for development runtime discovery.
+
+Then run:
 
 ```powershell
-npm install       # also applies patches/ (see below) and rebuilds native addons for Electron's ABI
+npm install
 npm run dev
 ```
 
-`electron-libmpv` is patched (`patches/electron-libmpv+1.1.0.patch`, applied automatically via
-`patch-package` in `postinstall`) — upstream never registers mpv's wakeup callback or forwards
-event payloads, which the playback watchdog below depends on entirely. If you ever bump the
-`electron-libmpv` version, re-apply/regenerate the patch and re-run `electron-rebuild`.
+`postinstall` applies `patches/electron-libmpv+1.1.0.patch` and rebuilds native addons for
+Electron. When upgrading Electron or `electron-libmpv`, rebuild both `electron-libmpv`
+and `better-sqlite3`, then repeat the playback-resilience test matrix.
 
-## Using the app
+### Development Guide Data
 
-- **Favorites:** hover a channel row and click the star; favorites sort first in the
-  list, and the ★ button next to the filter box shows favorites only. Stored with the
-  last-tuned channel in `%APPDATA%/iptv/prefs.json`.
-- **Channel filter:** the sidebar search box filters the loaded channel list by name
-  (no EPG involved).
-- **Quick switching:** with the Live TV tab focused (and not typing in a field),
-  `↑`/`↓` zap to the previous/next channel in the *visible* (filtered/sorted) list,
-  and `Backspace` jumps back to the previously tuned channel. The last channel
-  resumes automatically on next launch.
-- **Hidden channels:** hover a channel row and click ⊘ to remove a permanently broken
-  channel from the sidebar, guide grid, and EPG search — some Xtream channels are just
-  bad (wrong stream, wrong codec, dead relay) and there's no reason to keep tripping
-  over them. A channel that freezes playback badly enough to wedge mpv (see below) is
-  hidden automatically. Review or restore hidden channels from Settings → Hidden
-  Channels (no preview/playback there by design, since that's exactly what could
-  trigger the freeze again).
+Set `IPTV_EPG_FILE` to a local XMLTV file before `npm run dev` to ingest from disk instead
+of downloading the provider feed.
 
-## Logs & flaky streams
+### Verification
 
-Logs live in `%APPDATA%\iptv\logs\`:
+```powershell
+npx tsc --noEmit
+npm run lint
+npx vite build
+```
 
-- **`main.log`** — app events: every tune, playback failures (with mpv's reason),
-  EPG refresh errors. Rotated when it exceeds 2 MB.
-- **`mpv.log`** — mpv's own verbose log, truncated on each launch. This is where the
-  real network/demux detail is when a channel won't play.
+Release builds must also pass the clean-machine checklist in
+[RELEASE_READINESS.md](RELEASE_READINESS.md).
 
-Playback runs through a watchdog in the main process (`electron/playback.ts`), driven
-entirely by real mpv events (see `patches/electron-libmpv+1.1.0.patch` — the upstream
-addon silently discarded every mpv event and never registered its wakeup callback, so
-this had to be patched in; `getRawProperty` is synchronous and must never be polled,
-since it blocks the whole main process if the mpv core is busy). If a stream produces
-no playback within 25 s, or freezes for 20 s mid-play, the load is aborted with `stop`
-and the error shows in a bar above the player with a Retry button. The abort matters
-beyond the UI: it closes the connection, and Xtream providers typically cap concurrent
-streams — a wedged stream would otherwise hold the slot and block every subsequent
-tune. mpv's network timeout is also lowered to 10 s (default 60 s) so dead sockets fail
-fast, and hwdec is `auto-safe` rather than a forced `d3d11va`.
+## Documentation
 
-**When mpv itself wedges:** some malformed streams don't just fail to open — they hang
-the GPU hardware-decode session outright, a driver-level deadlock libmpv can't recover
-from in-process (confirmed via `mpv.log`: a channel played audio+video fine for ~30 s,
-then every mpv event stopped arriving, including for our own `stop` command — nothing
-played again until the process was killed). The watchdog detects this directly: any
-command it expects mpv to at least acknowledge (`loadfile`, `stop`) arms an 8 s timer
-that only clears when *any* mpv event arrives; silence past that means the core is
-dead. There is no in-process recovery from this — an earlier version tried an
-automatic kill-and-relaunch, but Chromium's own GPU process shares the same physical
-device/driver mpv hung on, so even Electron's own exit path could block on it too,
-and getting a reliable external relaunch working turned out to cost far more
-complexity than the rare failure justified. Instead the app shows a fixed "Playback
-engine became unresponsive — restart the app to continue" message (no Retry — retrying
-is pointless once the core is dead) and hides the offending channel automatically, so
-it can't wedge you again on the next launch. Relatedly, a channel is only trusted as
-the next-launch *resume* target once it's played without failing for 45 s
-(`CONFIRM_PLAYABLE_MS`) — comfortably past the ~30 s hang above — so a bad channel
-can't boot-loop the app into itself even before the auto-hide kicks in.
+- [Product Requirements](PRD.md)
+- [Software Design](SDD.md)
+- [Project Plan and Decision History](PLAN.md)
+- [Release Readiness Checklist](RELEASE_READINESS.md)
 
-## EPG (guide) internals
+## Beta Status
 
-The guide is cached in SQLite (`better-sqlite3`) at `%APPDATA%/iptv/epg-cache.sqlite3`,
-with an FTS5 index so search matches channel name, programme title, AND description.
-Ingestion streams the provider's full XMLTV feed (`xmltv.php`) through a SAX parser —
-feeds are tens of MB, so they never fully materialize in memory. The cache refreshes on
-app start when older than 12 hours (rechecked hourly), or on demand via the Guide tab's
-Refresh button. Refreshes ingest into staging tables and swap them in atomically at
-commit, so the previous guide stays fully browsable for the whole refresh.
-
-Dev tip: set `IPTV_EPG_FILE` to a local XMLTV file path before `npm run dev` to ingest
-from disk instead of hitting the provider (e.g. the gitignored sample in the project
-root).
-
-Native/CJS modules (`electron-libmpv`, `better-sqlite3`, `sax`) must stay in
-`rollupOptions.external` in `vite.config.ts` — bundling them into the ESM main bundle
-breaks addon path resolution (and Rollup's CJS interop mangles `sax` at runtime).
+BETA v0.1 is the first packaged preview. Feature development is active, persistence
+formats may still evolve, and unexpected provider-specific media issues may remain. The
+release becomes a stable v1 only after the release-readiness checklist and clean-machine
+validation are complete.

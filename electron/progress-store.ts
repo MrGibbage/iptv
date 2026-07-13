@@ -10,6 +10,14 @@ export interface WatchProgress {
   positionSecs: number
   durationSecs: number | null
   updatedAt: number
+  kind?: 'vod' | 'episode'
+  title?: string
+  seriesName?: string
+  image?: string
+  containerExtension?: string
+  categoryId?: string
+  episodeNum?: number
+  season?: number
 }
 
 export type ProgressMap = Record<string, WatchProgress>

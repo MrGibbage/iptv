@@ -29,6 +29,8 @@ interface Window {
     isFullScreen: () => Promise<boolean>
     relaunch: () => Promise<void>
     getCursorPoint: () => Promise<{ x: number; y: number }>
+    openLogsFolder: () => Promise<void>
+    createDiagnosticReport: () => Promise<string>
     onFullScreenChange: (callback: (isFullScreen: boolean) => void) => () => void
   }
   mpv: {

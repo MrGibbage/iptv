@@ -21,14 +21,31 @@ backlog items — the VOD/series time scrubber and idle-based cursor show/hide �
 implemented and verified (2026-07-06); details under "VOD & Series" and "App shell /
 Windows feel". Both design-gated items are now done too: **theming** (2026-07-06) and
 **Live TV category browsing** (2026-07-07), each after an approved design-preview
-artifact. Remaining backlog is just one small feature — an optional "search all
-movies/shows" scope toggle for VOD/series (see "VOD & Series") — then build-order step 5,
-packaging/installer, which is the last thing before v1 ships. **Decided 2026-07-06
+artifact. The last backlog item, the VOD/series "search all" scope toggle, is also
+done (2026-07-07, see "VOD & Series"). Build-order step 5, packaging/installer, is the
+primary remaining release milestone — Skip is deferring it to a separate session
+(planned for the afternoon of 2026-07-07). **Decided 2026-07-06
 NOT to build** a hidden-titles section for VOD/series (parallel to live's hidden
 channels): VOD/series playback already runs the same mpv watchdog, so failures get the
 same Retry/Restart-player/software-decode handling as live — and unlike channel-surfing
 you don't re-encounter a bad title repeatedly, so the re-encounter value didn't justify
 the added UI across both browsers.
+**Current update (2026-07-12):** The shared Live TV/Guide category filter is complete,
+persists across restarts, and resets both channel surfaces to the first row when changed.
+The new Home tab provides favorite channels, unfinished movies, and resumable recent TV
+episodes with dismiss/restore controls. Settings now chooses the startup destination;
+Movie and TV Show categories persist; and normal/maximized window state persists while
+cinema full screen deliberately does not. The implementation is documented in
+[`PRD.md`](PRD.md) and [`SDD.md`](SDD.md). Packaging/installer remains the next release
+milestone.
+
+The current product version is **BETA v0.1** (`0.1.0`). It remains beta until the gates
+in `RELEASE_READINESS.md` have passed.
+
+The packaging gate and clean-machine validation checklist live in
+[`RELEASE_READINESS.md`](RELEASE_READINESS.md); use that document as the authoritative
+go/no-go list before sharing any installer.
+
 **Project home:** `C:\Users\skip\projects\iptv` on ganymede. Develop with the native
 Windows Claude binary from PowerShell — not WSL; Node tooling across /mnt/c is slow. If you detect the user running claude with any linux binary, remind the user to exit and use the Windows binanry in PowerShell, started from the project directory.
 This is Skip's first TypeScript project.
@@ -95,8 +112,8 @@ from day one, and treat the provider URL itself as a secret (it embeds the accou
   Composes with the name filter and favorites-first sorting, and ↑/↓ zapping stays within
   the selected category (they all walk the same `displayChannels`). The button doubles as
   the active-filter indicator (dropped the mockup's separate chip row to keep it compact).
-  Only categories with (non-hidden) channels appear; selection is session state (resets to
-  All each launch), not persisted.
+  Only categories with (non-hidden) channels appear; selection is persisted in `prefs.json`
+  and restored at launch so Live TV and Guide reopen in the same browsing context.
 
 ### EPG (the priority)
 - Virtualized channel × time grid (react-virtual or similar) — must stay smooth with
@@ -154,27 +171,72 @@ from day one, and treat the provider URL itself as a secret (it embeds the accou
   blocking `getProperty` poll); duration is read once when the file starts. In theater
   mode the scrubber reveals with the cursor (see idle-cursor item below) so it's
   reachable, then hides when idle.
-- **NEXT SESSION (planned 2026-07-07 for the following session): "Search all" scope
-  toggle for Movies + TV Shows.** Today the search box in `VodBrowser.tsx`/
-  `SeriesBrowser.tsx` filters only the *currently selected category* (a client-side
-  filter over the per-category `streams`/list state). Skip wants an optional
-  whole-library search. Agreed design (GitHub/Reddit-style, not two search bars): one
-  search box with a scope toggle **"This category | All"**, default "This category"
-  (today's behavior). Implementation notes captured when scoped: `getVodStreams(config)`
-  / `getSeriesList(config)` with **no** category id already return the entire library, so
-  no backend change — lazy-fetch the full list the first time "All" is used and cache it
-  in component state for the session; only apply "All" *while there's a query* (clearing
-  the box drops back to the selected category, since the poster grid isn't virtualized and
-  shouldn't render thousands of cards); optionally tag each global result with its category
-  (like GitHub shows the repo). Do this for both Movies and TV Shows together. After this,
-  the only thing left is build-order step 5 (packaging) — Skip's chosen order is
-  search-first, then package.
+- **"Search all" scope toggle for Movies + TV Shows — implemented and verified
+  2026-07-07.** The search box in `VodBrowser.tsx`/`SeriesBrowser.tsx` now has a
+  **"This category | All"** segmented toggle next to it (only shown once there's a
+  query), default "This category" (the pre-existing per-category filter behavior).
+  Picking "All" lazy-fetches the whole library once per session
+  (`getVodStreams(config)` / `getSeriesList(config)` with no category id — already
+  returned everything, no backend change needed) and caches it in component state;
+  results are tagged with their category name (looked up from the already-loaded
+  categories list), GitHub-style. Clearing the search box always drops back to the
+  selected category regardless of scope, since the poster grid isn't virtualized.
+  Verified against the real account: 19,285 VOD titles / 8,751 series fetch and parse
+  in ~2.5s / ~1.5s — a non-issue.
+  - **Bug found and fixed during verification:** the lazy-fetch `useEffect` listed its
+    own `allStreamsLoading`/`allStreams` state as dependencies. Since the effect's first
+    line calls `setAllStreamsLoading(true)`, that state change retriggered the same
+    effect, whose cleanup set `cancelled = true` on the *original* in-flight request's
+    closure — so when the real fetch resolved, `if (!cancelled)` was already false and
+    the result was silently dropped, leaving "Loading full library…" stuck forever. Diagnosed
+    by adding temporary timing logs in `main.ts`'s IPC handler (confirmed the provider
+    request actually completed in ~2.5s while the renderer stayed stuck) and by fetching
+    the same endpoint from a standalone script to rule out a slow/rate-limited provider.
+    Fixed by dropping those two from the effect's dependency array — it should only
+    re-run on `[config, searchingAll]`, not on state it sets itself.
 
 ### App shell / Windows feel
 - Custom title bar (VS Code style) or native chrome; taskbar/Alt-Tab, tray, native
   notifications, DPI scaling; packaged as a normal installer (.exe). Ability to view video in full screen.
 - Known gap: Windows SMTC media controls (taskbar media overlay) need extra native
   wiring — nice-to-have, not v1-blocking.
+- **Home screen implemented 2026-07-12.** The first tab is now **Home** (chosen over
+  "Now Playing" and "Dashboard" because it describes a general landing place rather
+  than one active stream or an administrative screen). It provides themed horizontal
+  sections for favorite live channels, unfinished movies, and recently watched/
+  resumable TV episodes, with direct play/resume actions and quick links into each
+  browser. Every card can be removed from Home without deleting the underlying
+  favorite or watch progress; dismissed cards persist in `prefs.json` and can all be
+  restored from Settings.
+- **Configurable startup screen implemented 2026-07-12.** Settings → Startup can open
+  the app on Home, Live TV, Live TV Guide, Movie List, or TV Show List. Only a Live TV
+  startup auto-resumes the remembered channel; other startup destinations do not play
+  hidden live audio in the background. Entering Live TV or selecting a channel starts
+  playback normally.
+- **Browser category persistence implemented 2026-07-12.** Movie and TV Show category
+  selections now persist across restarts, matching the shared Live TV/Guide category
+  behavior.
+- **Window size/state persistence implemented 2026-07-12.** First launch opens centered
+  at 1280×800 (clamped to the primary display). Move/resize and maximized state are
+  saved separately in `window-state.json`; maximized windows reopen maximized, while
+  normal windows reopen at their last bounds. Saved bounds must overlap a currently
+  connected display, preventing an off-screen launch after monitor changes. Cinema/full
+  screen is deliberately never persisted, so an app exit from full screen returns to
+  the last normal windowed size on the next launch.
+- **Backlog requested 2026-07-06, implemented and verified against a real account
+- **Native callback shutdown hardening implemented 2026-07-12.** Closing a dev session
+  could produce Node `DEP0168` because a final mpv N-API event raced BrowserWindow
+  destruction and attempted `webContents.send` after its target was gone. Renderer-bound
+  mpv, playback, EPG, and full-screen notifications now share a guarded sender that stops
+  delivery as soon as closing begins and never lets a destroyed-window exception escape
+  through the native callback boundary.
+- **Packaged-support logging hardened 2026-07-12.** The final logger boundary removes
+  URLs and common credential fields, main logs rotate through four bounded generations,
+  and raw mpv file logging is disabled because it can expose authenticated stream URLs.
+  Concise logs now cover startup/runtime versions, major provider operations, EPG timing
+  and counts, playback transitions/failures, renderer/GPU exits, and uncaught errors.
+  Settings → Diagnostics opens the log folder or creates a second-pass-sanitized report
+  with basic non-secret environment metadata for easy sharing.
 - **Backlog requested 2026-07-06, implemented and verified against a real account
   2026-07-06:**
   1. **Full-screen toggle** — F11 (bound in the main process) or a header button
@@ -246,9 +308,8 @@ from day one, and treat the provider URL itself as a secret (it embeds the accou
     persists in `prefs.json` (`theme`, plus `customTheme` token map for a pasted theme).
     Known minor: brief flash of the default look on launch before the saved theme applies,
     since prefs load async (same as favorites/hidden) — easily eliminated later if wanted.
-  - Both design-gated items are now done (theming here; Live TV category browsing on
-    2026-07-07, see the Live TV section). Only the optional VOD/series "search all" scope
-    toggle remains before build-order step 5 (packaging).
+  - Both design-gated items are done (theming here; Live TV category browsing on
+    2026-07-07), and the VOD/series "search all" scope toggle is also complete.
 
 ## v2 Scope (Recordings)
 
@@ -267,6 +328,16 @@ from day one, and treat the provider URL itself as a secret (it embeds the accou
   UI — this is where roll-your-own IPTV projects usually stall.
 - **libmpv + Electron embedding** has some integration friction (rendering the video
   surface inside/behind the Chromium window); solved problem, but budget time for it.
+- **Possible bug spotted 2026-07-07, not yet investigated:** on a fresh Electron launch
+  straight into a playing channel (observed via the dev auto-restart after an
+  `electron/main.ts` edit, and via `app:relaunch` — the same relaunch the wedge-recovery
+  "Restart player" button uses), the mpv native child window briefly painted over the
+  whole client area, hiding the header/tabs bar, until the OS window was resized (forcing
+  a relayout). Didn't chase it since it was tangential to the session's task, but it's
+  the same class of bug as the earlier Settings-overlay fix (native child window painting
+  over Chromium content because nothing told it to resize first) — worth a proper look
+  before/during packaging since "Restart player" is the only recovery path once a wedge
+  hits and packaged builds won't have hot-reload's incidental relayouts to mask it.
 
 ## Suggested Build Order
 
@@ -282,7 +353,7 @@ from day one, and treat the provider URL itself as a secret (it embeds the accou
    connection's transaction, so mid-refresh guide browsing can see a partial grid), and
    a friendlier guide empty state while a first/stale refresh is in flight.
 4. VOD/series browser — complete and verified 2026-07-06 (both VOD and series checked
-   against a real account).
+   against a real account), including the "search all" scope toggle (2026-07-07).
 5. Packaging/installer. **← next**
 6. v2: recording service on docker-server + app integration.
 
@@ -380,8 +451,9 @@ Playback error-handling hardening landed 2026-07-06, prompted by a real provider
   property-change). `electron/playback.ts` is a strictly event-driven watchdog on top:
   open-timeout (25s), stall-timeout (20s via `time-pos` silence), mpv's own error string
   surfaced from `end-file`/log tail — zero synchronous mpv calls anywhere.
-  `electron/logger.ts` writes `userData/logs/main.log` (app events) and mpv's own
-  (quieted via `msg-level`) log to `mpv.log`.
+  `electron/logger.ts` writes `userData/logs/main.log` (app events). An mpv file log
+  was useful during initial diagnosis but was later disabled because it can expose the
+  authenticated Xtream URL; see the 2026-07-12 logging-hardening note above.
 - **Fix, layer two — the wedge:** detected by arming a timer after any command mpv should
   acknowledge (`loadfile`/`stop`) and clearing it on ANY mpv event; silence means the core
   is dead. **An automatic kill-and-relaunch was tried and abandoned** — Chromium's own GPU
@@ -471,8 +543,15 @@ no channel would play until he Ctrl-C'd the app in the terminal and relaunched:
   client-side off each channel's `categoryId`; see the Live TV section for the full
   shape and why the dropdown won over a rail / grouped list.
 
+- **VOD/series "search all" scope toggle implemented and verified 2026-07-07** — the
+  last feature-backlog item before packaging. See "VOD & Series" above for the full
+  shape and the effect-dependency bug found and fixed during verification (main-process
+  timing logs plus a standalone diagnostic script confirmed the provider itself wasn't
+  slow — 19,285 VOD titles / 8,751 series fetched and parsed in a couple seconds each —
+  which pointed at a renderer-side bug rather than a provider/network issue).
+
 Key choices unchanged from the original plan: Electron + libmpv, Xtream Codes as the only
 provider format, EPG grid quality as the defining feature, recordings deferred to v2
 running server-side on docker-server (never client-side). Next concrete action is
-build-order step 5: packaging/installer. Remaining backlog before it is just the optional
-VOD/series "search all" scope toggle (see "VOD & Series").
+build-order step 5: packaging/installer, followed by the focused validation items listed
+in [PRD.md](PRD.md).

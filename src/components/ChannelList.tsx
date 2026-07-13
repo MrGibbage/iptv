@@ -47,6 +47,7 @@ function ChannelList({
   onSelectCategory,
 }: ChannelListProps) {
   const selectedRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const catRef = useRef<HTMLDivElement>(null)
   const [catMenuOpen, setCatMenuOpen] = useState(false)
 
@@ -54,6 +55,12 @@ function ChannelList({
   useEffect(() => {
     selectedRef.current?.scrollIntoView({ block: 'nearest' })
   }, [selectedStreamId])
+
+  // A category change starts browsing from its first channel instead of
+  // retaining the previous category's arbitrary vertical scroll position.
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0
+  }, [selectedCategoryId])
 
   // Close the category menu on any click outside it.
   useEffect(() => {
@@ -130,7 +137,7 @@ function ChannelList({
         <p className="channel-hint channel-error">Failed to load channels: {error}</p>
       ) : (
         <>
-          <div className="channel-scroll">
+          <div className="channel-scroll" ref={scrollRef}>
             {channels.length === 0 && (
               <p className="channel-hint">
                 {favoritesOnly

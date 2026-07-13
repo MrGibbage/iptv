@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { XtreamConfig, LiveStream, LiveCategory, VodStream, SeriesEpisode } from '../electron/xtream'
 import type { PlaybackStatus } from '../electron/playback'
 import type { ProgressMap } from '../electron/progress-store'
-import SettingsScreen from './components/SettingsScreen'
+import SettingsScreen, { type StartupView } from './components/SettingsScreen'
 import ChannelList from './components/ChannelList'
 import Player from './components/Player'
 import EpgGrid from './components/EpgGrid'
@@ -11,16 +11,19 @@ import PlayerStats from './components/PlayerStats'
 import MediaScrubber from './components/MediaScrubber'
 import VodBrowser from './components/VodBrowser'
 import SeriesBrowser from './components/SeriesBrowser'
+import HomeScreen from './components/HomeScreen'
 import { applyTheme, type ThemeTokens } from './themes'
 import './app.css'
 
-type View = 'live' | 'guide' | 'vod' | 'series'
+type View = StartupView
 
 // A movie or an episode — anything that isn't a live channel but shares the
 // same single mpv instance, resume-tracking, and theater-mode behavior. Kept
 // as one union (rather than separate vod/episode state) so those behaviors
 // are implemented once instead of duplicated per media kind.
-type PlayingMedia = { kind: 'vod'; item: VodStream } | { kind: 'episode'; item: SeriesEpisode; seriesName: string }
+type PlayingMedia =
+  | { kind: 'vod'; item: VodStream }
+  | { kind: 'episode'; item: SeriesEpisode; seriesName: string; seriesCover: string }
 
 function mediaProgressKey(media: PlayingMedia): string {
   return media.kind === 'vod' ? `vod:${media.item.streamId}` : `ep:${media.item.id}`
@@ -42,6 +45,8 @@ function App() {
   const [configLoaded, setConfigLoaded] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [view, setView] = useState<View>('live')
+  const [startupView, setStartupView] = useState<StartupView>('live')
+  const [playbackArmed, setPlaybackArmed] = useState(false)
   const [selectedStream, setSelectedStream] = useState<LiveStream | null>(null)
   const [previousStream, setPreviousStream] = useState<LiveStream | null>(null)
   const [streamUrl, setStreamUrl] = useState<string | null>(null)
@@ -50,6 +55,9 @@ function App() {
   const [channelsError, setChannelsError] = useState<string | null>(null)
   const [categories, setCategories] = useState<LiveCategory[]>([])
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
+  const [selectedVodCategoryId, setSelectedVodCategoryId] = useState<string | null>(null)
+  const [selectedSeriesCategoryId, setSelectedSeriesCategoryId] = useState<string | null>(null)
+  const [dismissedHomeItems, setDismissedHomeItems] = useState<Set<string>>(new Set())
   const [favorites, setFavorites] = useState<Set<number>>(new Set())
   const [favoritesOnly, setFavoritesOnly] = useState(false)
   const [channelFilter, setChannelFilter] = useState('')
@@ -94,6 +102,18 @@ function App() {
   useEffect(() => {
     customThemeRef.current = customTheme
   }, [customTheme])
+  const selectedCategoryIdRef = useRef(selectedCategoryId)
+  useEffect(() => {
+    selectedCategoryIdRef.current = selectedCategoryId
+  }, [selectedCategoryId])
+  const selectedVodCategoryIdRef = useRef(selectedVodCategoryId)
+  useEffect(() => { selectedVodCategoryIdRef.current = selectedVodCategoryId }, [selectedVodCategoryId])
+  const selectedSeriesCategoryIdRef = useRef(selectedSeriesCategoryId)
+  useEffect(() => { selectedSeriesCategoryIdRef.current = selectedSeriesCategoryId }, [selectedSeriesCategoryId])
+  const startupViewRef = useRef(startupView)
+  useEffect(() => { startupViewRef.current = startupView }, [startupView])
+  const dismissedHomeItemsRef = useRef(dismissedHomeItems)
+  useEffect(() => { dismissedHomeItemsRef.current = dismissedHomeItems }, [dismissedHomeItems])
 
   const persistPrefs = (overrides: {
     favorites?: Set<number>
@@ -102,11 +122,28 @@ function App() {
     softwareDecoding?: boolean
     theme?: string
     customTheme?: Record<string, string> | null
+    selectedCategoryId?: string | null
+    selectedVodCategoryId?: string | null
+    selectedSeriesCategoryId?: string | null
+    startupView?: StartupView
+    dismissedHomeItems?: Set<string>
   }) => {
     window.prefs.save({
       favoriteStreamIds: Array.from(overrides.favorites ?? favoritesRef.current),
       hiddenStreamIds: Array.from(overrides.hiddenIds ?? hiddenIdsRef.current),
       lastStreamId: 'lastStreamId' in overrides ? overrides.lastStreamId! : lastStreamIdRef.current,
+      selectedLiveCategoryId:
+        'selectedCategoryId' in overrides
+          ? overrides.selectedCategoryId!
+          : selectedCategoryIdRef.current,
+      selectedVodCategoryId: 'selectedVodCategoryId' in overrides
+        ? overrides.selectedVodCategoryId!
+        : selectedVodCategoryIdRef.current,
+      selectedSeriesCategoryId: 'selectedSeriesCategoryId' in overrides
+        ? overrides.selectedSeriesCategoryId!
+        : selectedSeriesCategoryIdRef.current,
+      startupView: overrides.startupView ?? startupViewRef.current,
+      dismissedHomeItems: Array.from(overrides.dismissedHomeItems ?? dismissedHomeItemsRef.current),
       softwareDecoding: overrides.softwareDecoding ?? softwareDecodingRef.current,
       theme: overrides.theme ?? themeRef.current,
       customTheme: 'customTheme' in overrides ? overrides.customTheme! : customThemeRef.current,
@@ -183,6 +220,13 @@ function App() {
       setSoftwareDecoding(p.softwareDecoding)
       setTheme(p.theme)
       setCustomTheme(p.customTheme)
+      setSelectedCategoryId(p.selectedLiveCategoryId)
+      setSelectedVodCategoryId(p.selectedVodCategoryId)
+      setSelectedSeriesCategoryId(p.selectedSeriesCategoryId)
+      setStartupView(p.startupView)
+      setView(p.startupView)
+      setPlaybackArmed(p.startupView === 'live')
+      setDismissedHomeItems(new Set(p.dismissedHomeItems))
       lastStreamIdRef.current = p.lastStreamId
       setPrefsLoaded(true)
     })
@@ -224,16 +268,17 @@ function App() {
   }, [config])
 
   useEffect(() => {
-    if (config && selectedStream) {
+    if (config && selectedStream && playbackArmed) {
       window.xtream.buildLiveStreamUrl(config, selectedStream.streamId).then(setStreamUrl)
     }
-  }, [config, selectedStream])
+  }, [config, selectedStream, playbackArmed])
 
   const tune = (stream: LiveStream) => {
     if (selectedStream && selectedStream.streamId !== stream.streamId) {
       setPreviousStream(selectedStream)
     }
     setSelectedStream(stream)
+    setPlaybackArmed(true)
     setPlayingMedia(null)
     setMediaStreamUrl(null)
     setView('live')
@@ -273,6 +318,7 @@ function App() {
     setMediaPosition(resumeSecs)
     setMediaDuration(0)
     setPlayingMedia(media)
+    setView(media.kind === 'vod' ? 'vod' : 'series')
   }
 
   const stopMedia = () => {
@@ -305,7 +351,19 @@ function App() {
           const positionSecs = Number(pos)
           if (!Number.isFinite(positionSecs)) return
           const durationSecs = dur && Number.isFinite(Number(dur)) ? Number(dur) : null
-          const entry = { positionSecs, durationSecs, updatedAt: Date.now() }
+          const entry = {
+            positionSecs,
+            durationSecs,
+            updatedAt: Date.now(),
+            kind: playingMedia.kind,
+            title: playingMedia.kind === 'vod' ? playingMedia.item.name : playingMedia.item.title,
+            seriesName: playingMedia.kind === 'episode' ? playingMedia.seriesName : undefined,
+            image: playingMedia.kind === 'vod' ? playingMedia.item.streamIcon : playingMedia.seriesCover,
+            containerExtension: playingMedia.item.containerExtension,
+            categoryId: playingMedia.kind === 'vod' ? playingMedia.item.categoryId : undefined,
+            episodeNum: playingMedia.kind === 'episode' ? playingMedia.item.episodeNum : undefined,
+            season: playingMedia.kind === 'episode' ? playingMedia.item.season : undefined,
+          }
           window.progress.save(key, entry)
           setProgressMap((prev) => ({ ...prev, [key]: entry }))
         },
@@ -409,6 +467,52 @@ function App() {
     persistPrefs({ theme: 'custom', customTheme: tokens })
   }
 
+  const selectLiveCategory = (categoryId: string | null) => {
+    setSelectedCategoryId(categoryId)
+    persistPrefs({ selectedCategoryId: categoryId })
+  }
+
+  const tuneFromHome = (stream: LiveStream) => {
+    // Home favorites retain their provider category on the loaded stream, so
+    // carry that browsing context into Live TV before tuning. This keeps the
+    // selected row visible and makes the category the persisted default.
+    selectLiveCategory(stream.categoryId || null)
+    tune(stream)
+  }
+
+  const selectVodCategory = (categoryId: string) => {
+    setSelectedVodCategoryId(categoryId)
+    persistPrefs({ selectedVodCategoryId: categoryId })
+  }
+
+  const selectSeriesCategory = (categoryId: string) => {
+    setSelectedSeriesCategoryId(categoryId)
+    persistPrefs({ selectedSeriesCategoryId: categoryId })
+  }
+
+  const changeStartupView = (next: StartupView) => {
+    setStartupView(next)
+    persistPrefs({ startupView: next })
+  }
+
+  const dismissHomeItem = (key: string) => {
+    const next = new Set(dismissedHomeItems)
+    next.add(key)
+    setDismissedHomeItems(next)
+    persistPrefs({ dismissedHomeItems: next })
+  }
+
+  const resetDismissedHomeItems = () => {
+    const next = new Set<string>()
+    setDismissedHomeItems(next)
+    persistPrefs({ dismissedHomeItems: next })
+  }
+
+  const openView = (next: View) => {
+    if (next === 'live') setPlaybackArmed(true)
+    setView(next)
+  }
+
   // The list as displayed in the sidebar: name-filtered, favorites surfaced
   // first (or exclusively). Keyboard zapping walks this same order.
   const displayChannels = useMemo(() => {
@@ -438,6 +542,15 @@ function App() {
   const selectedCategoryName = selectedCategoryId
     ? categoryOptions.find((c) => c.id === selectedCategoryId)?.name ?? null
     : null
+
+  // Both views consume the same category state, so switching views or tuning
+  // from the Guide never loses the user's current browsing context.
+  const categoryChannels = useMemo(
+    () => selectedCategoryId
+      ? visibleChannels.filter((channel) => channel.categoryId === selectedCategoryId)
+      : visibleChannels,
+    [visibleChannels, selectedCategoryId],
+  )
 
   // Quick switching: ArrowUp/ArrowDown zap through the visible list,
   // Backspace swaps back to the previously tuned channel.
@@ -525,7 +638,7 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefsLoaded, visibleChannels])
 
-  if (!configLoaded) return null
+  if (!configLoaded || !prefsLoaded) return null
 
   const settingsOpen = !config || showSettings
   // Live TV and a playing movie/episode all share the single mpv instance, so
@@ -553,6 +666,10 @@ function App() {
           theme={theme}
           onSelectTheme={selectTheme}
           onApplyCustomTheme={applyCustomTheme}
+          startupView={startupView}
+          onStartupViewChange={changeStartupView}
+          dismissedHomeItemCount={dismissedHomeItems.size}
+          onResetDismissedHomeItems={resetDismissedHomeItems}
         />
       )}
 
@@ -573,26 +690,32 @@ function App() {
             </div>
             <nav className="app-tabs">
               <button
+                className={`app-tab${view === 'home' ? ' active' : ''}`}
+                onClick={() => openView('home')}
+              >
+                Home
+              </button>
+              <button
                 className={`app-tab${view === 'live' ? ' active' : ''}`}
-                onClick={() => setView('live')}
+                onClick={() => openView('live')}
               >
                 Live TV
               </button>
               <button
                 className={`app-tab${view === 'guide' ? ' active' : ''}`}
-                onClick={() => setView('guide')}
+                onClick={() => openView('guide')}
               >
                 Guide
               </button>
               <button
                 className={`app-tab${view === 'vod' ? ' active' : ''}`}
-                onClick={() => setView('vod')}
+                onClick={() => openView('vod')}
               >
                 Movies
               </button>
               <button
                 className={`app-tab${view === 'series' ? ' active' : ''}`}
-                onClick={() => setView('series')}
+                onClick={() => openView('series')}
               >
                 TV Shows
               </button>
@@ -644,7 +767,7 @@ function App() {
                 categories={categoryOptions}
                 selectedCategoryId={selectedCategoryId}
                 selectedCategoryName={selectedCategoryName}
-                onSelectCategory={setSelectedCategoryId}
+                onSelectCategory={selectLiveCategory}
               />
             </aside>
           )}
@@ -743,12 +866,32 @@ function App() {
           <div className="app-guide">
             <EpgGrid
               config={config}
-              channels={visibleChannels}
+              channels={categoryChannels}
               hiddenEpgChannelIds={hiddenEpgChannelIds}
               tunedStreamId={selectedStream?.streamId ?? null}
               onTune={tune}
+              categories={categoryOptions}
+              selectedCategoryId={selectedCategoryId}
+              selectedCategoryName={selectedCategoryName}
+              onSelectCategory={selectLiveCategory}
             />
           </div>
+        )}
+
+        {view === 'home' && (
+          <HomeScreen
+            config={config}
+            favoriteChannels={visibleChannels.filter((channel) => favorites.has(channel.streamId))}
+            progress={progressMap}
+            dismissedItems={dismissedHomeItems}
+            onDismiss={dismissHomeItem}
+            onTuneChannel={tuneFromHome}
+            onPlayMovie={(item, resumeSecs) => playMedia({ kind: 'vod', item }, resumeSecs)}
+            onPlayEpisode={(item, seriesName, seriesCover, resumeSecs) =>
+              playMedia({ kind: 'episode', item, seriesName, seriesCover }, resumeSecs)
+            }
+            onBrowse={openView}
+          />
         )}
 
         {/* Kept mounted (display:none, not unmounted) whenever a movie is
@@ -759,6 +902,8 @@ function App() {
             config={config}
             progress={progressMap}
             onPlay={(item, resumeSecs) => playMedia({ kind: 'vod', item }, resumeSecs)}
+            initialCategoryId={selectedVodCategoryId}
+            onCategoryChange={selectVodCategory}
           />
         </div>
 
@@ -767,9 +912,11 @@ function App() {
           <SeriesBrowser
             config={config}
             progress={progressMap}
-            onPlay={(episode, seriesName, resumeSecs) =>
-              playMedia({ kind: 'episode', item: episode, seriesName }, resumeSecs)
+            onPlay={(episode, seriesName, seriesCover, resumeSecs) =>
+              playMedia({ kind: 'episode', item: episode, seriesName, seriesCover }, resumeSecs)
             }
+            initialCategoryId={selectedSeriesCategoryId}
+            onCategoryChange={selectSeriesCategory}
           />
         </div>
         </>

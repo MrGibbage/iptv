@@ -55,6 +55,8 @@ contextBridge.exposeInMainWorld('app', {
   relaunch: () => ipcRenderer.invoke('app:relaunch') as Promise<void>,
   getCursorPoint: () =>
     ipcRenderer.invoke('app:getCursorPoint') as Promise<{ x: number; y: number }>,
+  openLogsFolder: () => ipcRenderer.invoke('app:openLogsFolder') as Promise<void>,
+  createDiagnosticReport: () => ipcRenderer.invoke('app:createDiagnosticReport') as Promise<string>,
   onFullScreenChange: (callback: (isFullScreen: boolean) => void) => {
     const listener = (_event: unknown, isFullScreen: boolean) => callback(isFullScreen)
     ipcRenderer.on('app:fullscreen-changed', listener)

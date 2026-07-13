@@ -3,6 +3,8 @@ import type { XtreamConfig, LiveStream } from '../../electron/xtream'
 import { THEMES, THEME_TOKENS, THEME_BY_ID } from '../themes'
 import '../app.css'
 
+export type StartupView = 'home' | 'live' | 'guide' | 'vod' | 'series'
+
 interface SettingsScreenProps {
   initialConfig: XtreamConfig | null
   onSaved: (config: XtreamConfig) => void
@@ -15,6 +17,10 @@ interface SettingsScreenProps {
   theme?: string
   onSelectTheme?: (themeId: string) => void
   onApplyCustomTheme?: (tokens: Record<string, string>) => void
+  startupView?: StartupView
+  onStartupViewChange?: (view: StartupView) => void
+  dismissedHomeItemCount?: number
+  onResetDismissedHomeItems?: () => void
 }
 
 function SettingsScreen({
@@ -29,6 +35,10 @@ function SettingsScreen({
   theme,
   onSelectTheme,
   onApplyCustomTheme,
+  startupView,
+  onStartupViewChange,
+  dismissedHomeItemCount,
+  onResetDismissedHomeItems,
 }: SettingsScreenProps) {
   const [serverUrl, setServerUrl] = useState(initialConfig?.serverUrl ?? '')
   const [username, setUsername] = useState(initialConfig?.username ?? '')
@@ -146,6 +156,34 @@ function SettingsScreen({
         )}
       </div>
 
+      {startupView && onStartupViewChange && (
+        <div className="settings-card">
+          <h2>Startup</h2>
+          <p className="settings-sub">Choose what you see when the app opens.</p>
+          <label className="settings-field">
+            <span className="settings-field-label">Start on</span>
+            <select
+              value={startupView}
+              onChange={(event) => onStartupViewChange(event.target.value as StartupView)}
+            >
+              <option value="home">Home</option>
+              <option value="live">Live TV</option>
+              <option value="guide">Live TV Guide</option>
+              <option value="vod">Movie List</option>
+              <option value="series">TV Show List</option>
+            </select>
+          </label>
+          {!!dismissedHomeItemCount && onResetDismissedHomeItems && (
+            <div className="settings-inline-action">
+              <span className="settings-sub">
+                {dismissedHomeItemCount} item{dismissedHomeItemCount === 1 ? '' : 's'} hidden from Home.
+              </span>
+              <button onClick={onResetDismissedHomeItems}>Restore hidden Home items</button>
+            </div>
+          )}
+        </div>
+      )}
+
       {onSelectTheme && (
         <div className="settings-card">
           <h2>Appearance</h2>
@@ -236,6 +274,28 @@ function SettingsScreen({
           </p>
         </div>
       )}
+
+      <div className="settings-card">
+        <h2>Diagnostics</h2>
+        <p className="settings-sub">
+          Logs contain app lifecycle, provider-operation results, guide refreshes, and
+          playback failures. Provider URLs and credentials are automatically removed.
+        </p>
+        <div className="settings-actions">
+          <button onClick={() => window.app.openLogsFolder()}>Open Logs Folder</button>
+          <button
+            onClick={async () => {
+              await window.app.createDiagnosticReport()
+            }}
+          >
+            Create Diagnostic Report
+          </button>
+        </div>
+        <p className="settings-sub" style={{ marginBottom: 0 }}>
+          A diagnostic report contains sanitized logs and basic app/system versions. It
+          does not include account settings, provider addresses, usernames, or passwords.
+        </p>
+      </div>
 
       <div className="settings-card">
         <details className="shortcuts-details">
