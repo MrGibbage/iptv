@@ -5,7 +5,7 @@
 - Product: Skip's IPTV Viewer
 - Target: First distributable Windows release
 - Status: **Not ready for external distribution**
-- Last reviewed: 2026-07-12
+- Last reviewed: 2026-07-13
 - Owner: Skip
 - Related: [PRD.md](PRD.md), [SDD.md](SDD.md), [PLAN.md](PLAN.md),
   [README.md](README.md)
@@ -18,7 +18,7 @@ an installed build on a clean Windows machine.
 
 | Gate | Current state | Required result |
 |---|---|---|
-| Packaged runtime | Blocked | Native dependencies and libmpv included and tested |
+| Packaged runtime | Complete | Native dependencies and libmpv included and tested |
 | Runtime security | Blocked | Supported Electron and hardened renderer boundary |
 | Credential storage | Blocked | Secrets encrypted and plaintext migrated |
 | Data integrity | Blocked | Atomic writes and single-instance behavior |
@@ -30,21 +30,31 @@ an installed build on a clean Windows machine.
 
 ### 1.1 Package Native Runtime Dependencies
 
-Current evidence: the existing `release/0.0.0` build contains React dependencies in
-`app.asar`, but does not contain `electron-libmpv`, `better-sqlite3`, `sax`, native
-`.node` files, `libmpv-2.dll`, or an `app.asar.unpacked` tree.
+Current evidence (2026-07-13): `npm run build:unpacked` completes successfully and creates
+`release/0.1.0/win-unpacked`. Its ASAR contains the production dependencies and its
+`app.asar.unpacked` tree contains both native addons. `libmpv-2.dll` is beside the main
+executable. The packaged app launches and remains responsive on the build machine. Skip
+confirmed Live TV, Guide/EPG, movie, and episode behavior from this build on 2026-07-13.
+The complete `win-unpacked` folder was then zipped, copied to a separate laptop without
+development setup, extracted, and successfully exercised with behavior matching the build
+machine.
 
-- [ ] Replace the restrictive builder `files: ["dist", "dist-electron"]` configuration
-  with rules that include required production dependencies.
-- [ ] Ensure `electron-libmpv` is packaged and its native addon is unpacked.
-- [ ] Ensure `better-sqlite3` is packaged and its native addon is unpacked.
-- [ ] Ensure `sax` is packaged.
-- [ ] Include `libmpv-2.dll` outside ASAR at the exact location used by Windows DLL
+- [x] Confirm electron-builder includes required production dependencies alongside the
+  explicit `dist` and `dist-electron` application files.
+- [x] Ensure `electron-libmpv` is packaged and its native addon is unpacked.
+- [x] Ensure `better-sqlite3` is packaged and its native addon is unpacked.
+- [x] Ensure `sax` is packaged.
+- [x] Include `libmpv-2.dll` outside ASAR at the exact location used by Windows DLL
   resolution.
-- [ ] Confirm the patched addon files are present in the packaged dependency.
-- [ ] Inspect `app.asar` and `app.asar.unpacked` after every packaging change.
-- [ ] Launch `win-unpacked` without Node/npm or the development checkout on `PATH`.
-- [ ] Confirm Live playback and EPG SQLite access work from `win-unpacked`.
+- [x] Confirm the patched addon files are present in the packaged dependency.
+- [x] Inspect `app.asar` and `app.asar.unpacked` for the initial BETA v0.1 package.
+- [x] Launch `win-unpacked` successfully on the build machine.
+- [x] Launch `win-unpacked` without Node/npm or the development checkout on `PATH`.
+- [x] Confirm Live playback and EPG SQLite access work from `win-unpacked`.
+
+Private beta builds currently set `win.signAndEditExecutable: false`. This avoids a local
+Windows symlink-privilege failure while extracting electron-builder's signing-tool bundle.
+Re-enable executable editing when icons/metadata and any signing decision are implemented.
 
 Reference: [electron-builder application contents](https://www.electron.build/docs/contents/).
 

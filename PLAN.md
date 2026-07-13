@@ -39,6 +39,14 @@ cinema full screen deliberately does not. The implementation is documented in
 [`PRD.md`](PRD.md) and [`SDD.md`](SDD.md). Packaging/installer remains the next release
 milestone.
 
+**Packaging update (2026-07-13):** The Windows x64 `win-unpacked` build now completes,
+includes `electron-libmpv`, `better-sqlite3`, `sax`, both unpacked native addons, and
+places `libmpv-2.dll` beside the executable. The packaged app starts successfully on the
+build machine, Live/EPG/movie/episode behavior has been manually verified, and the normal
+development app still starts afterward. The zipped `win-unpacked` folder was also copied
+to and fully exercised on a separate laptop with no development setup, confirming that the
+runtime package is self-contained. The NSIS installer remains open.
+
 The current product version is **BETA v0.1** (`0.1.0`). It remains beta until the gates
 in `RELEASE_READINESS.md` have passed.
 
