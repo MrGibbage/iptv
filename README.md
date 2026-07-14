@@ -21,7 +21,7 @@
 > release-readiness and clean-machine validation. The app can generate a sanitized
 > diagnostic report from Settings if something goes wrong.
 
-Pronounced **LAY-oh-muh-dee-ah** — named after one of Neptune's moons; the compass-and-play
+Pronounced **LAY-oh-MUH-dee-ah** — named after one of Neptune's moons; the compass-and-play
 icon nods to navigating a media universe.
 
 ## Screenshots
