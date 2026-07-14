@@ -15,7 +15,7 @@ pretending every decision was known before implementation.
 ## Product Summary
 
 Laomedeia is a modern Windows IPTV client centered on a fast, readable
-electronic programme guide. It combines Live TV, a virtualized guide, movies, series,
+electronic program guide. It combines Live TV, a virtualized guide, movies, series,
 resume support, and a personalized Home screen in one themed desktop experience.
 
 ## Problem
@@ -25,7 +25,7 @@ playback recovery, and poor continuity between sessions. Large Xtream libraries 
 these problems because users may need to navigate thousands of channels and titles.
 
 The product must minimize the effort between opening the app and reaching the desired
-channel, programme, movie, or episode.
+channel, program, movie, or episode.
 
 ## Goals
 
@@ -75,7 +75,7 @@ thousands of VOD and series entries.
 
 1. Open Guide with the current Live TV category already selected.
 2. Change category, day, time position, or search query.
-3. Search channel names, programme titles, and descriptions.
+3. Search channel names, program titles, and descriptions.
 4. Select a channel or Watch; return to Live TV without losing category context.
 
 ### Continue Media
@@ -133,11 +133,11 @@ thousands of VOD and series entries.
 - Return to the previous channel with Backspace.
 - Trust a channel for restart resume only after it remains playable long enough.
 
-### Electronic Programme Guide
+### Electronic Program Guide
 
 - Render a virtualized channel-by-time grid suitable for thousands of channels.
 - Provide sticky headers, now line, day navigation, jump-to-now, and details.
-- Load programme rows only for the visible/overscanned viewport.
+- Load program rows only for the visible/overscanned viewport.
 - Search channel name, title, and description through FTS.
 - Share category selection with Live TV for grid rows and search results.
 - Reset vertical scroll on category change while preserving horizontal time.
@@ -189,7 +189,7 @@ thousands of VOD and series entries.
   compatibility mode, last confirmed channel, and dismissed Home cards
 - `progress.json`: movie/episode resume positions and available media metadata
 - `window-state.json`: normal bounds and maximized state
-- `epg-cache.sqlite3`: guide channels, programmes, indexes, and FTS
+- `epg-cache.sqlite3`: guide channels, programs, indexes, and FTS
 - `logs/main.log` and bounded rotated generations: sanitized diagnostics
 
 All data lives in Electron's per-user application directory and must remain outside the
@@ -199,7 +199,7 @@ public repository.
 
 ### Performance
 
-- Guide scrolling must remain responsive near 2,000 channels and 100,000 programmes.
+- Guide scrolling must remain responsive near 2,000 channels and 100,000 programs.
 - Live category switching must be immediate over loaded data.
 - Full-library VOD/Series search may lazy-load and cache for the session.
 

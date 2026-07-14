@@ -64,7 +64,7 @@ The Guide provides:
 - Channel-by-time grid with sticky headers
 - Current-time line and jump-to-now
 - Previous/next day navigation
-- Programme details and Watch actions
+- Program details and Watch actions
 - Search across channel, title, and description
 - Manual Guide refresh
 - The same category filter used by Live TV

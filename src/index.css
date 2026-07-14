@@ -3,7 +3,7 @@
 :root {
   --bg-0: #0b0d12; /* window background */
   --bg-1: #11141b; /* panels: header, sidebar, toolbars, detail pane */
-  --bg-2: #181d27; /* raised: buttons, inputs, programme blocks */
+  --bg-2: #181d27; /* raised: buttons, inputs, program blocks */
   --bg-3: #222836; /* hover */
   --border: #262d3c;
   --border-strong: #38415a;

@@ -7,7 +7,7 @@ export interface XmltvChannel {
   icon: string | null
 }
 
-export interface XmltvProgramme {
+export interface XmltvProgram {
   channelId: string
   startMs: number
   stopMs: number
@@ -17,7 +17,7 @@ export interface XmltvProgramme {
 
 export interface XmltvHandlers {
   onChannels(batch: XmltvChannel[]): void
-  onProgrammes(batch: XmltvProgramme[]): void
+  onPrograms(batch: XmltvProgram[]): void
 }
 
 const BATCH_SIZE = 1000
@@ -44,24 +44,24 @@ export function parseXmltvTime(value: string): number | null {
 }
 
 // Streaming XMLTV parse — the file never fully materializes in memory.
-// Channels and programmes are delivered in batches; XMLTV files list all
-// channels before any programmes, so onChannels calls finish before the
-// first onProgrammes call.
+// Channels and programs are delivered in batches; XMLTV files list all
+// channels before any programs, so onChannels calls finish before the
+// first onPrograms call.
 export function parseXmltvFile(
   filePath: string,
   handlers: XmltvHandlers,
-): Promise<{ channelCount: number; programmeCount: number }> {
+): Promise<{ channelCount: number; programCount: number }> {
   return new Promise((resolve, reject) => {
     const saxStream = sax.createStream(true, { trim: false })
     const fileStream = createReadStream(filePath, { encoding: 'utf-8' })
 
     let channelCount = 0
-    let programmeCount = 0
+    let programCount = 0
     let channelBatch: XmltvChannel[] = []
-    let programmeBatch: XmltvProgramme[] = []
+    let programBatch: XmltvProgram[] = []
 
     let currentChannel: { id: string; displayName: string | null; icon: string | null } | null = null
-    let currentProgramme: {
+    let currentProgram: {
       channelId: string
       start: string
       stop: string
@@ -77,10 +77,10 @@ export function parseXmltvFile(
         channelBatch = []
       }
     }
-    const flushProgrammes = () => {
-      if (programmeBatch.length > 0) {
-        handlers.onProgrammes(programmeBatch)
-        programmeBatch = []
+    const flushPrograms = () => {
+      if (programBatch.length > 0) {
+        handlers.onPrograms(programBatch)
+        programBatch = []
       }
     }
 
@@ -91,7 +91,7 @@ export function parseXmltvFile(
           currentChannel = { id: String(attrs.id ?? ''), displayName: null, icon: null }
           break
         case 'programme':
-          currentProgramme = {
+          currentProgram = {
             channelId: String(attrs.channel ?? ''),
             start: String(attrs.start ?? ''),
             stop: String(attrs.stop ?? ''),
@@ -105,10 +105,10 @@ export function parseXmltvFile(
           if (currentChannel && currentChannel.displayName === null) textTarget = 'display-name'
           break
         case 'title':
-          if (currentProgramme) textTarget = 'title'
+          if (currentProgram) textTarget = 'title'
           break
         case 'desc':
-          if (currentProgramme) textTarget = 'desc'
+          if (currentProgram) textTarget = 'desc'
           break
         case 'icon':
           if (currentChannel && attrs.src) currentChannel.icon = String(attrs.src)
@@ -120,10 +120,10 @@ export function parseXmltvFile(
       if (!textTarget) return
       if (textTarget === 'display-name' && currentChannel) {
         currentChannel.displayName = (currentChannel.displayName ?? '') + text
-      } else if (textTarget === 'title' && currentProgramme) {
-        currentProgramme.title += text
-      } else if (textTarget === 'desc' && currentProgramme) {
-        currentProgramme.description += text
+      } else if (textTarget === 'title' && currentProgram) {
+        currentProgram.title += text
+      } else if (textTarget === 'desc' && currentProgram) {
+        currentProgram.description += text
       }
     })
 
@@ -143,26 +143,26 @@ export function parseXmltvFile(
           if (channelBatch.length >= BATCH_SIZE) flushChannels()
         }
         currentChannel = null
-      } else if (name === 'programme' && currentProgramme) {
-        const startMs = parseXmltvTime(currentProgramme.start)
-        const stopMs = parseXmltvTime(currentProgramme.stop)
-        if (currentProgramme.channelId && startMs !== null && stopMs !== null && stopMs > startMs) {
-          programmeBatch.push({
-            channelId: currentProgramme.channelId,
+      } else if (name === 'programme' && currentProgram) {
+        const startMs = parseXmltvTime(currentProgram.start)
+        const stopMs = parseXmltvTime(currentProgram.stop)
+        if (currentProgram.channelId && startMs !== null && stopMs !== null && stopMs > startMs) {
+          programBatch.push({
+            channelId: currentProgram.channelId,
             startMs,
             stopMs,
-            title: currentProgramme.title.trim() || '(no title)',
-            description: currentProgramme.description.trim(),
+            title: currentProgram.title.trim() || '(no title)',
+            description: currentProgram.description.trim(),
           })
-          programmeCount++
-          if (programmeBatch.length >= BATCH_SIZE) {
-            // Channels always precede programmes in XMLTV; flush any remainder
-            // before the first programme batch goes out.
+          programCount++
+          if (programBatch.length >= BATCH_SIZE) {
+            // Channels always precede programs in XMLTV; flush any remainder
+            // before the first program batch goes out.
             flushChannels()
-            flushProgrammes()
+            flushPrograms()
           }
         }
-        currentProgramme = null
+        currentProgram = null
       }
     })
 
@@ -177,8 +177,8 @@ export function parseXmltvFile(
     saxStream.on('end', () => {
       try {
         flushChannels()
-        flushProgrammes()
-        resolve({ channelCount, programmeCount })
+        flushPrograms()
+        resolve({ channelCount, programCount })
       } catch (err) {
         reject(err instanceof Error ? err : new Error(String(err)))
       }

@@ -129,8 +129,8 @@ contextBridge.exposeInMainWorld('progress', {
 contextBridge.exposeInMainWorld('epg', {
   refresh: (config: XtreamConfig, force?: boolean) => ipcRenderer.invoke('epg:refresh', config, force),
   getStatus: () => ipcRenderer.invoke('epg:getStatus'),
-  getProgrammes: (channelIds: string[], fromMs: number, toMs: number) =>
-    ipcRenderer.invoke('epg:getProgrammes', channelIds, fromMs, toMs),
+  getPrograms: (channelIds: string[], fromMs: number, toMs: number) =>
+    ipcRenderer.invoke('epg:getPrograms', channelIds, fromMs, toMs),
   search: (query: string) => ipcRenderer.invoke('epg:search', query),
   getBounds: () => ipcRenderer.invoke('epg:getBounds'),
   onStatus: (callback: (status: unknown) => void) => {

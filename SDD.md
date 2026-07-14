@@ -73,7 +73,7 @@ patches/
 - Playback UI state and resume map
 - Home dismissals, theme, and full-screen state
 
-Components retain screen-specific state. Guide owns day/search/programme caches and
+Components retain screen-specific state. Guide owns day/search/program caches and
 scroll. Movie/Series browsers own filter text, details, and session search caches.
 
 ### Preload
@@ -174,18 +174,18 @@ sax rather than loaded into a DOM.
 
 ### Storage and Atomic Refresh
 
-better-sqlite3 stores channels, programmes, channel/time indexes, and FTS5. Refresh writes
+better-sqlite3 stores channels, programs, channel/time indexes, and FTS5. Refresh writes
 staging tables inside a transaction, builds indexes, then swaps tables atomically. Guide
 readers see the previous complete dataset until commit.
 
 ### Queries and Rendering
 
 - Bounds restrict date navigation.
-- Programme queries accept visible EPG IDs and a time range.
-- FTS covers channel name, programme title, and description.
+- Program queries accept visible EPG IDs and a time range.
+- FTS covers channel name, program title, and description.
 - Renderer filtering removes hidden channels and applies the shared category.
 - TanStack Virtual renders only visible and overscanned rows.
-- Programme data is fetched lazily per visible channel and cached for the active day.
+- Program data is fetched lazily per visible channel and cached for the active day.
 - Category changes reset vertical scroll without moving horizontal time.
 
 ## Home Architecture

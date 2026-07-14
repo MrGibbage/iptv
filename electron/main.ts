@@ -369,8 +369,8 @@ ipcMain.handle('epg:getStatus', () => {
   return epg.getStatus()
 })
 
-ipcMain.handle('epg:getProgrammes', (_event, channelIds: string[], fromMs: number, toMs: number) => {
-  return epgDb.getProgrammes(channelIds, fromMs, toMs)
+ipcMain.handle('epg:getPrograms', (_event, channelIds: string[], fromMs: number, toMs: number) => {
+  return epgDb.getPrograms(channelIds, fromMs, toMs)
 })
 
 ipcMain.handle('epg:search', (_event, query: string) => {

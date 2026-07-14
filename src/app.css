@@ -502,7 +502,7 @@
   appearance: none;
   -webkit-appearance: none;
   border-radius: 999px;
-  /* Filled portion (accent) up to the thumb, track colour after. */
+  /* Filled portion (accent) up to the thumb, track color after. */
   background: linear-gradient(
     to right,
     var(--accent) 0%,

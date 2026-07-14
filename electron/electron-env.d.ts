@@ -118,11 +118,11 @@ interface Window {
       force?: boolean,
     ) => Promise<import('../electron/epg').EpgStatus>
     getStatus: () => Promise<import('../electron/epg').EpgStatus>
-    getProgrammes: (
+    getPrograms: (
       channelIds: string[],
       fromMs: number,
       toMs: number,
-    ) => Promise<import('../electron/epg-db').EpgProgramme[]>
+    ) => Promise<import('../electron/epg-db').EpgProgram[]>
     search: (query: string) => Promise<import('../electron/epg-db').EpgSearchResult[]>
     getBounds: () => Promise<import('../electron/epg-db').EpgBounds>
     onStatus: (callback: (status: import('../electron/epg').EpgStatus) => void) => () => void

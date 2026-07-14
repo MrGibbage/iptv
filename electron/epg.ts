@@ -14,7 +14,7 @@ export interface EpgStatus {
   phase: 'download' | 'ingest' | null
   lastRefreshMs: number | null
   channelCount: number
-  programmeCount: number
+  programCount: number
   error: string | null
 }
 
@@ -39,7 +39,7 @@ export function getStatus(): EpgStatus {
     phase: currentPhase,
     lastRefreshMs: last != null ? Number(last) : null,
     channelCount: counts.channels,
-    programmeCount: counts.programmes,
+    programCount: counts.programs,
     error: lastError,
   }
 }
@@ -73,11 +73,11 @@ async function downloadXmltv(config: XtreamConfig, destPath: string): Promise<vo
   }
 }
 
-async function ingestFile(filePath: string): Promise<{ channelCount: number; programmeCount: number }> {
+async function ingestFile(filePath: string): Promise<{ channelCount: number; programCount: number }> {
   const ingest = epgDb.beginReplaceIngest()
-  // Programme FTS rows carry the channel name so search can match on it;
-  // XMLTV lists all channels before any programmes, so this map is complete
-  // by the time programmes arrive.
+  // Program FTS rows carry the channel name so search can match on it;
+  // XMLTV lists all channels before any programs, so this map is complete
+  // by the time programs arrive.
   const channelNames = new Map<string, string>()
   try {
     const result = await parseXmltvFile(filePath, {
@@ -87,9 +87,9 @@ async function ingestFile(filePath: string): Promise<{ channelCount: number; pro
           ingest.insertChannel({ id: ch.id, displayName: ch.displayName, icon: ch.icon })
         }
       },
-      onProgrammes(batch) {
+      onPrograms(batch) {
         for (const p of batch) {
-          ingest.insertProgramme({
+          ingest.insertProgram({
             channelId: p.channelId,
             startMs: p.startMs,
             stopMs: p.stopMs,
@@ -144,7 +144,7 @@ export async function refresh(config: XtreamConfig, force = false): Promise<EpgS
     await ingestFile(sourceFile)
     epgDb.setMeta(LAST_REFRESH_KEY, String(Date.now()))
     const counts = epgDb.getCounts()
-    log('epg', `refresh completed in ${Date.now() - startedAt}ms channels=${counts.channels} programmes=${counts.programmes}`)
+    log('epg', `refresh completed in ${Date.now() - startedAt}ms channels=${counts.channels} programs=${counts.programs}`)
   } catch (err) {
     lastError = err instanceof Error ? err.message : String(err)
     log('epg', `refresh failed in ${Date.now() - startedAt}ms: ${lastError}`)

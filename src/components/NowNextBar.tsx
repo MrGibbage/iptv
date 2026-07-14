@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { LiveStream } from '../../electron/xtream'
-import type { EpgProgramme } from '../../electron/epg-db'
+import type { EpgProgram } from '../../electron/epg-db'
 import './epg.css'
 
 function fmtTime(ms: number): string {
@@ -12,8 +12,8 @@ interface NowNextBarProps {
 }
 
 function NowNextBar({ stream }: NowNextBarProps) {
-  const [nowProg, setNowProg] = useState<EpgProgramme | null>(null)
-  const [nextProg, setNextProg] = useState<EpgProgramme | null>(null)
+  const [nowProg, setNowProg] = useState<EpgProgram | null>(null)
+  const [nextProg, setNextProg] = useState<EpgProgram | null>(null)
 
   useEffect(() => {
     setNowProg(null)
@@ -24,7 +24,7 @@ function NowNextBar({ stream }: NowNextBarProps) {
     let disposed = false
     const load = () => {
       const now = Date.now()
-      window.epg.getProgrammes([epgId], now, now + 12 * 60 * 60 * 1000).then((rows) => {
+      window.epg.getPrograms([epgId], now, now + 12 * 60 * 60 * 1000).then((rows) => {
         if (disposed) return
         setNowProg(rows.find((p) => p.startMs <= now && p.stopMs > now) ?? null)
         setNextProg(rows.find((p) => p.startMs > now) ?? null)

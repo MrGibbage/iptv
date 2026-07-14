@@ -403,15 +403,15 @@ it needs the ingested EPG data. Neither got pushed to v2; both fit v1 cleanly.
 Build-order step 2 is done as of 2026-07-05 — the EPG, the feature this project exists for:
 
 - **Ingestion/cache:** the provider's full XMLTV (`xmltv.php`, ~28 MB) streams through a
-  SAX parser into `better-sqlite3` at `userData/epg-cache.sqlite3` — channels, programmes
+  SAX parser into `better-sqlite3` at `userData/epg-cache.sqlite3` — channels, programs
   (indexed by channel + time), an FTS5 index for search, all replaced atomically in one
   transaction. Auto-refresh on start when older than 12 h (rechecked hourly) + manual
   Refresh button. `IPTV_EPG_FILE` env var ingests a local file instead (dev).
 - **Grid:** Guide tab with a `@tanstack/react-virtual` channel × time grid (rows join the
   live-stream list to XMLTV ids via `epg_channel_id`), sticky channel column + time ruler,
-  now-line, jump-to-now, day navigation clamped to data bounds, programme detail pane with
+  now-line, jump-to-now, day navigation clamped to data bounds, program detail pane with
   a Watch button, click-channel-to-tune. Verified smooth with ~2 k channels / ~96 k
-  programmes — only visible rows hit the DOM, programme data loads on demand per visible
+  programs — only visible rows hit the DOM, program data loads on demand per visible
   channel.
 - **Search:** FTS5 across channel name, title, AND description (the step-2 requirement);
   clicking a result jumps the grid to that channel + time and opens the detail pane.

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { LiveStream, XtreamConfig } from '../../electron/xtream'
-import type { EpgBounds, EpgProgramme, EpgSearchResult } from '../../electron/epg-db'
+import type { EpgBounds, EpgProgram, EpgSearchResult } from '../../electron/epg-db'
 import type { EpgStatus } from '../../electron/epg'
 import CategoryFilter from './CategoryFilter'
 import type { CategoryOption } from './ChannelList'
@@ -42,8 +42,8 @@ function fmtAgo(ms: number): string {
   return `${Math.round(hours / 24)}d ago`
 }
 
-interface SelectedProgramme {
-  programme: EpgProgramme
+interface SelectedProgram {
+  program: EpgProgram
   channelName: string
 }
 
@@ -64,9 +64,9 @@ interface EpgGridProps {
 function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune, categories, selectedCategoryId, selectedCategoryName, onSelectCategory }: EpgGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [dayStartMs, setDayStartMs] = useState(() => localMidnight(Date.now()))
-  const [programmes, setProgrammes] = useState<Map<string, EpgProgramme[]>>(new Map())
+  const [programs, setPrograms] = useState<Map<string, EpgProgram[]>>(new Map())
   const requestedIdsRef = useRef(new Set<string>())
-  const [selected, setSelected] = useState<SelectedProgramme | null>(null)
+  const [selected, setSelected] = useState<SelectedProgram | null>(null)
   const [status, setStatus] = useState<EpgStatus | null>(null)
   const [bounds, setBounds] = useState<EpgBounds | null>(null)
   const [nowMs, setNowMs] = useState(Date.now())
@@ -100,18 +100,18 @@ function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune,
     if (scrollRef.current) scrollRef.current.scrollTop = 0
   }, [selectedCategoryId])
 
-  const resetProgrammeCache = () => {
+  const resetProgramCache = () => {
     requestedIdsRef.current = new Set()
-    setProgrammes(new Map())
+    setPrograms(new Map())
   }
 
   const changeDay = (newDayStartMs: number) => {
     setDayStartMs(newDayStartMs)
-    resetProgrammeCache()
+    resetProgramCache()
   }
 
   // Initial status/bounds + live status updates; a completed refresh
-  // invalidates the programme cache so new data shows up without a reload.
+  // invalidates the program cache so new data shows up without a reload.
   useEffect(() => {
     let disposed = false
     const applyStatus = (s: EpgStatus) => {
@@ -120,7 +120,7 @@ function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune,
       if (s.lastRefreshMs !== lastRefreshRef.current) {
         lastRefreshRef.current = s.lastRefreshMs
         requestedIdsRef.current = new Set()
-        setProgrammes(new Map())
+        setPrograms(new Map())
         window.epg.getBounds().then((b) => {
           if (!disposed) setBounds(b)
         })
@@ -134,7 +134,7 @@ function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune,
     }
   }, [])
 
-  // Fetch programmes for visible rows (plus overscan) that aren't cached yet.
+  // Fetch programs for visible rows (plus overscan) that aren't cached yet.
   useEffect(() => {
     if (visibleEnd < 0) return
     const timer = setTimeout(() => {
@@ -148,9 +148,9 @@ function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune,
       }
       if (ids.length === 0) return
       window.epg
-        .getProgrammes(ids, dayStartMs, dayEndMs)
+        .getPrograms(ids, dayStartMs, dayEndMs)
         .then((rows) => {
-          setProgrammes((prev) => {
+          setPrograms((prev) => {
             const next = new Map(prev)
             for (const id of ids) next.set(id, [])
             for (const row of rows) next.get(row.channelId)?.push(row)
@@ -162,7 +162,7 @@ function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune,
         })
     }, 120)
     return () => clearTimeout(timer)
-  }, [visibleStart, visibleEnd, dayStartMs, dayEndMs, channels, programmes])
+  }, [visibleStart, visibleEnd, dayStartMs, dayEndMs, channels, programs])
 
   // Tick the now-line / past-dimming every 30s.
   useEffect(() => {
@@ -228,7 +228,7 @@ function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune,
 
   const openSearchResult = (result: EpgSearchResult) => {
     setSearchQuery('')
-    setSelected({ programme: result, channelName: result.channelName })
+    setSelected({ program: result, channelName: result.channelName })
     const day = localMidnight(result.startMs)
     if (day !== dayStartMs) changeDay(day)
     setJumpTarget({ channelId: result.channelId, timeMs: result.startMs })
@@ -245,7 +245,7 @@ function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune,
   const minDay = bounds?.minStartMs != null ? localMidnight(bounds.minStartMs) : null
   const maxDay = bounds?.maxStopMs != null ? localMidnight(bounds.maxStopMs - 1) : null
   const refreshing = status?.state === 'refreshing'
-  const hasData = (status?.programmeCount ?? 0) > 0
+  const hasData = (status?.programCount ?? 0) > 0
 
   const statusText = (() => {
     if (!status) return ''
@@ -254,7 +254,7 @@ function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune,
     }
     if (status.state === 'error') return `Guide refresh failed: ${status.error}`
     if (status.lastRefreshMs == null) return 'Guide never refreshed'
-    return `Updated ${fmtAgo(status.lastRefreshMs)} · ${status.channelCount.toLocaleString()} channels · ${status.programmeCount.toLocaleString()} programmes`
+    return `Updated ${fmtAgo(status.lastRefreshMs)} · ${status.channelCount.toLocaleString()} channels · ${status.programCount.toLocaleString()} programs`
   })()
 
   const ticks = []
@@ -352,7 +352,7 @@ function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune,
             <>
               <p className="epg-empty-title">No guide data yet</p>
               <p className="epg-empty-sub">
-                Download the programme guide from your provider to fill in the grid. After the
+                Download the program guide from your provider to fill in the grid. After the
                 first download it refreshes automatically in the background.
               </p>
               <button className="btn-accent" onClick={() => window.epg.refresh(config, true)}>
@@ -377,7 +377,7 @@ function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune,
 
             {virtualItems.map((vi) => {
               const stream = channels[vi.index]
-              const progs = stream.epgChannelId ? programmes.get(stream.epgChannelId) : undefined
+              const progs = stream.epgChannelId ? programs.get(stream.epgChannelId) : undefined
               const loaded = stream.epgChannelId != null && progs !== undefined
               return (
                 <div
@@ -398,7 +398,7 @@ function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune,
                     const clampedStop = Math.min(p.stopMs, dayEndMs)
                     const left = CH_COL_W + ((clampedStart - dayStartMs) / 60_000) * PX_PER_MIN
                     const width = Math.max(6, ((clampedStop - clampedStart) / 60_000) * PX_PER_MIN - 2)
-                    const isSelected = selected?.programme.id === p.id
+                    const isSelected = selected?.program.id === p.id
                     const isPast = p.stopMs <= nowMs
                     return (
                       <div
@@ -406,7 +406,7 @@ function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune,
                         className={`epg-block${isSelected ? ' epg-block-selected' : ''}${isPast ? ' epg-block-past' : ''}`}
                         style={{ left, width }}
                         title={p.title}
-                        onClick={() => setSelected({ programme: p, channelName: stream.name })}
+                        onClick={() => setSelected({ program: p, channelName: stream.name })}
                       >
                         <div className="epg-block-title">{p.title}</div>
                         <div className="epg-block-time">
@@ -430,19 +430,19 @@ function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune,
           {selected ? (
             <>
               <div className="epg-detail-body">
-                <div className="epg-detail-title">{selected.programme.title}</div>
+                <div className="epg-detail-title">{selected.program.title}</div>
                 <div className="epg-detail-meta">
-                  {selected.channelName} · {fmtDay(selected.programme.startMs)} {fmtTime(selected.programme.startMs)}–
-                  {fmtTime(selected.programme.stopMs)}
+                  {selected.channelName} · {fmtDay(selected.program.startMs)} {fmtTime(selected.program.startMs)}–
+                  {fmtTime(selected.program.stopMs)}
                 </div>
-                <div className="epg-detail-desc">{selected.programme.description || 'No description.'}</div>
+                <div className="epg-detail-desc">{selected.program.description || 'No description.'}</div>
               </div>
-              {streamsByEpgId.has(selected.programme.channelId) && (
-                <button onClick={() => onTune(streamsByEpgId.get(selected.programme.channelId)!)}>▶ Watch</button>
+              {streamsByEpgId.has(selected.program.channelId) && (
+                <button onClick={() => onTune(streamsByEpgId.get(selected.program.channelId)!)}>▶ Watch</button>
               )}
             </>
           ) : (
-            <div className="epg-detail-empty">Select a programme to see details.</div>
+            <div className="epg-detail-empty">Select a program to see details.</div>
           )}
         </div>
       )}

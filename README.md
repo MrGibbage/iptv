@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>A modern Windows IPTV viewer for Xtream-compatible providers.</b><br>
-  Fast Live TV, a virtualized programme guide, movies, and TV series — without the dated interface.
+  Fast Live TV, a virtualized program guide, movies, and TV series — without the dated interface.
 </p>
 
 <p align="center">
@@ -28,12 +28,12 @@ icon nods to navigating a media universe.
 
 | Home | Live TV | Guide |
 |---|---|---|
-| <img src="docs/screenshots/home.png" width="270" alt="Home screen with favorite channels and continue watching"> | <img src="docs/screenshots/live-tv.png" width="270" alt="Live TV with channel sidebar"> | <img src="docs/screenshots/guide.png" width="270" alt="Full programme guide"> |
+| <img src="docs/screenshots/home.png" width="270" alt="Home screen with favorite channels and continue watching"> | <img src="docs/screenshots/live-tv.png" width="270" alt="Live TV with channel sidebar"> | <img src="docs/screenshots/guide.png" width="270" alt="Full program guide"> |
 
 ## Highlights
 
 - ⚡ Fast, virtualized TV Guide built for thousands of channels
-- 🔍 Search across channels, programme titles, and descriptions
+- 🔍 Search across channels, program titles, and descriptions
 - ⭐ Favorites, hidden channels, and keyboard zapping
 - 🎬 Movie & TV Show browsers with posters, details, and resume playback
 - 🏠 Home screen with your favorites and unfinished shows front and center
