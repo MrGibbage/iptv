@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import type { XtreamConfig, LiveStream } from '../../electron/xtream'
+import type { Provider } from '../../electron/recorder'
+import type { RecorderConfig } from '../../electron/recorder-settings-store'
 import { THEMES, THEME_TOKENS, THEME_BY_ID } from '../themes'
 import '../app.css'
 
-export type StartupView = 'home' | 'live' | 'guide' | 'vod' | 'series'
+export type StartupView = 'home' | 'live' | 'guide' | 'vod' | 'series' | 'recordings'
 
 interface SettingsScreenProps {
   initialConfig: XtreamConfig | null
@@ -21,6 +23,15 @@ interface SettingsScreenProps {
   onStartupViewChange?: (view: StartupView) => void
   dismissedHomeItemCount?: number
   onResetDismissedHomeItems?: () => void
+  initialRecorderConfig?: RecorderConfig | null
+  onRecorderSaved?: (config: RecorderConfig) => void
+}
+
+// Loose match for auto-preselecting a recorder provider against this app's
+// Xtream server URL — ignores protocol/trailing-slash/case differences, which
+// are common (http vs https, a trailing "/") without implying anything else.
+function normalizeForCompare(url: string): string {
+  return url.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase()
 }
 
 function SettingsScreen({
@@ -39,6 +50,8 @@ function SettingsScreen({
   onStartupViewChange,
   dismissedHomeItemCount,
   onResetDismissedHomeItems,
+  initialRecorderConfig,
+  onRecorderSaved,
 }: SettingsScreenProps) {
   const [serverUrl, setServerUrl] = useState(initialConfig?.serverUrl ?? '')
   const [username, setUsername] = useState(initialConfig?.username ?? '')
@@ -91,6 +104,70 @@ function SettingsScreen({
       onSaved(config)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const [recorderBaseUrl, setRecorderBaseUrl] = useState(initialRecorderConfig?.baseUrl ?? '')
+  const [recorderApiKey, setRecorderApiKey] = useState(initialRecorderConfig?.apiKey ?? '')
+  const [recorderTesting, setRecorderTesting] = useState(false)
+  const [recorderTestMessage, setRecorderTestMessage] = useState<string | null>(null)
+  const [recorderTestPassedFor, setRecorderTestPassedFor] = useState<string | null>(null)
+  const [recorderProviders, setRecorderProviders] = useState<Provider[] | null>(null)
+  const [recorderProvidersError, setRecorderProvidersError] = useState<string | null>(null)
+  const [selectedProviderId, setSelectedProviderId] = useState<number | null>(
+    initialRecorderConfig?.providerId ?? null,
+  )
+  const [recorderSaving, setRecorderSaving] = useState(false)
+  const [recorderSaveMessage, setRecorderSaveMessage] = useState<string | null>(null)
+
+  const currentRecorderKey = JSON.stringify({ baseUrl: recorderBaseUrl, apiKey: recorderApiKey })
+  const recorderConnectionTested = recorderTestPassedFor === currentRecorderKey
+  const canSaveRecorder = recorderConnectionTested && selectedProviderId != null
+
+  const handleTestRecorder = async () => {
+    setRecorderTesting(true)
+    setRecorderTestMessage(null)
+    setRecorderProviders(null)
+    setRecorderProvidersError(null)
+    try {
+      const conn = { baseUrl: recorderBaseUrl, apiKey: recorderApiKey }
+      const result = await window.recorder.testConnection(conn)
+      setRecorderTestMessage(result.message)
+      if (!result.ok) {
+        setRecorderTestPassedFor(null)
+        return
+      }
+      setRecorderTestPassedFor(currentRecorderKey)
+      try {
+        const providers = await window.recorder.listProviders(conn)
+        setRecorderProviders(providers)
+        // Auto-preselect only when the current selection isn't already one of
+        // the returned providers — keeps a previously-saved, still-valid pick
+        // from being silently overridden on every re-test.
+        if (!providers.some((p) => p.id === selectedProviderId)) {
+          const xtreamHost = initialConfig?.serverUrl ? normalizeForCompare(initialConfig.serverUrl) : null
+          const match = xtreamHost ? providers.find((p) => normalizeForCompare(p.baseUrl) === xtreamHost) : undefined
+          setSelectedProviderId(match?.id ?? (providers.length === 1 ? providers[0].id : null))
+        }
+      } catch (err) {
+        setRecorderProvidersError(err instanceof Error ? err.message : String(err))
+      }
+    } finally {
+      setRecorderTesting(false)
+    }
+  }
+
+  const handleSaveRecorder = async () => {
+    if (!canSaveRecorder || selectedProviderId == null) return
+    setRecorderSaving(true)
+    setRecorderSaveMessage(null)
+    try {
+      const config: RecorderConfig = { baseUrl: recorderBaseUrl, apiKey: recorderApiKey, providerId: selectedProviderId }
+      await window.recorderSettings.save(config)
+      onRecorderSaved?.(config)
+      setRecorderSaveMessage('Recorder settings saved.')
+    } finally {
+      setRecorderSaving(false)
     }
   }
 
@@ -156,6 +233,97 @@ function SettingsScreen({
         )}
       </div>
 
+      {initialRecorderConfig !== undefined && (
+        <div className="settings-card">
+          <h2>Recording (iptv-recorder)</h2>
+          <p className="settings-sub">
+            Connects to a companion recording service for DVR. A passing connection test is
+            required before these settings can be saved.
+          </p>
+          <label className="settings-field">
+            <span className="settings-field-label">Recorder Server URL</span>
+            <input
+              type="text"
+              placeholder="http://192.168.0.231:3300"
+              value={recorderBaseUrl}
+              onChange={(e) => {
+                setRecorderBaseUrl(e.target.value)
+                setRecorderTestPassedFor(null)
+              }}
+            />
+          </label>
+          <label className="settings-field">
+            <span className="settings-field-label">API Key</span>
+            <input
+              type="password"
+              value={recorderApiKey}
+              onChange={(e) => {
+                setRecorderApiKey(e.target.value)
+                setRecorderTestPassedFor(null)
+              }}
+            />
+          </label>
+
+          <div className="settings-actions">
+            <button
+              onClick={handleTestRecorder}
+              disabled={recorderTesting || !recorderBaseUrl || !recorderApiKey}
+            >
+              {recorderTesting ? 'Testing…' : 'Test Connection'}
+            </button>
+          </div>
+
+          {recorderTestMessage && (
+            <p className={`settings-message ${recorderConnectionTested ? 'ok' : 'err'}`}>
+              {recorderTestMessage}
+            </p>
+          )}
+
+          {recorderConnectionTested && (
+            <label className="settings-field">
+              <span className="settings-field-label">Provider</span>
+              {recorderProvidersError ? (
+                <p className="settings-message err">Failed to load providers: {recorderProvidersError}</p>
+              ) : recorderProviders && recorderProviders.length === 0 ? (
+                <p className="settings-sub" style={{ marginBottom: 0 }}>
+                  No providers are configured on the recorder yet — add one there first.
+                </p>
+              ) : (
+                <select
+                  value={selectedProviderId ?? ''}
+                  onChange={(e) => setSelectedProviderId(e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="" disabled>
+                    Select the provider matching this account…
+                  </option>
+                  {recorderProviders?.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} — {p.baseUrl}
+                      {!p.enabled ? ' (disabled)' : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <p className="settings-sub" style={{ marginBottom: 0 }}>
+                Which of the recorder's own Xtream provider accounts corresponds to this app's
+                account above — the recorder stores its own credentials separately and has no
+                other way to know they're the same account.
+              </p>
+            </label>
+          )}
+
+          {onRecorderSaved && (
+            <div className="settings-actions">
+              <button className="btn-accent" onClick={handleSaveRecorder} disabled={!canSaveRecorder || recorderSaving}>
+                {recorderSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          )}
+
+          {recorderSaveMessage && <p className="settings-message ok">{recorderSaveMessage}</p>}
+        </div>
+      )}
+
       {startupView && onStartupViewChange && (
         <div className="settings-card">
           <h2>Startup</h2>
@@ -171,6 +339,7 @@ function SettingsScreen({
               <option value="guide">Live TV Guide</option>
               <option value="vod">Movie List</option>
               <option value="series">TV Show List</option>
+              <option value="recordings">Recordings</option>
             </select>
           </label>
           {!!dismissedHomeItemCount && onResetDismissedHomeItems && (

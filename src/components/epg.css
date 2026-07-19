@@ -393,3 +393,10 @@
   letter-spacing: 0.05em;
   margin-right: 4px;
 }
+
+.nownext-bar .nn-slot button {
+  margin-left: 6px;
+  padding: 1px 7px;
+  font-size: 0.8rem;
+  vertical-align: middle;
+}

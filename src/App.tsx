@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { XtreamConfig, LiveStream, LiveCategory, VodStream, SeriesEpisode } from '../electron/xtream'
 import type { PlaybackStatus } from '../electron/playback'
 import type { ProgressMap } from '../electron/progress-store'
+import type { RecorderConfig } from '../electron/recorder-settings-store'
+import type { Recording } from '../electron/recorder'
 import SettingsScreen, { type StartupView } from './components/SettingsScreen'
 import ChannelList from './components/ChannelList'
 import Player from './components/Player'
@@ -12,25 +14,33 @@ import MediaScrubber from './components/MediaScrubber'
 import VodBrowser from './components/VodBrowser'
 import SeriesBrowser from './components/SeriesBrowser'
 import HomeScreen from './components/HomeScreen'
+import RecordingsBrowser from './components/RecordingsBrowser'
 import { applyTheme, type ThemeTokens } from './themes'
 import './app.css'
 
 type View = StartupView
 
-// A movie or an episode — anything that isn't a live channel but shares the
-// same single mpv instance, resume-tracking, and theater-mode behavior. Kept
-// as one union (rather than separate vod/episode state) so those behaviors
-// are implemented once instead of duplicated per media kind.
+// A movie, episode, or completed recording — anything that isn't a live
+// channel but shares the same single mpv instance, resume-tracking, and
+// theater-mode behavior. Kept as one union (rather than separate per-kind
+// state) so those behaviors are implemented once instead of duplicated per
+// media kind. Recordings don't get resume-position tracking (see the
+// progress-saving effect below) — a reasonable scope cut, not an oversight.
 type PlayingMedia =
   | { kind: 'vod'; item: VodStream }
   | { kind: 'episode'; item: SeriesEpisode; seriesName: string; seriesCover: string }
+  | { kind: 'recording'; item: Recording; channelName: string }
 
 function mediaProgressKey(media: PlayingMedia): string {
-  return media.kind === 'vod' ? `vod:${media.item.streamId}` : `ep:${media.item.id}`
+  if (media.kind === 'vod') return `vod:${media.item.streamId}`
+  if (media.kind === 'episode') return `ep:${media.item.id}`
+  return `rec:${media.item.id}`
 }
 
 function mediaTitle(media: PlayingMedia): string {
-  return media.kind === 'vod' ? media.item.name : `${media.seriesName} — ${media.item.title}`
+  if (media.kind === 'vod') return media.item.name
+  if (media.kind === 'episode') return `${media.seriesName} — ${media.item.title}`
+  return `${media.channelName} recording — ${new Date(media.item.startTime).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
 }
 
 const PROGRESS_SAVE_INTERVAL_MS = 20_000
@@ -43,6 +53,8 @@ const CURSOR_POLL_MS = 250
 function App() {
   const [config, setConfig] = useState<XtreamConfig | null>(null)
   const [configLoaded, setConfigLoaded] = useState(false)
+  const [recorderConfig, setRecorderConfig] = useState<RecorderConfig | null>(null)
+  const [recorderConfigLoaded, setRecorderConfigLoaded] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [view, setView] = useState<View>('live')
   const [startupView, setStartupView] = useState<StartupView>('live')
@@ -81,6 +93,7 @@ function App() {
   const lastStreamIdRef = useRef<number | null>(null)
   const resumedRef = useRef(false)
   const mediaSeekedRef = useRef(false)
+  const mediaHeadersRef = useRef<string | undefined>(undefined)
 
   const favoritesRef = useRef(favorites)
   useEffect(() => {
@@ -170,12 +183,15 @@ function App() {
     return window.app.onFullScreenChange(setIsFullScreen)
   }, [])
 
+  // Any screen a movie/episode/recording can be played from — the player
+  // toolbar, theater mode, and mpv surface all key off this uniformly.
+  const mediaCapableView = view === 'vod' || view === 'series' || view === 'recordings'
+
   // Full screen on the Live tab goes into "theater mode": header, sidebar,
   // and the now/next toolbar disappear so only the video remains, since with
   // them gone there's no on-screen way back, a brief hint is shown for a few
   // seconds pointing at F11/Esc.
-  const theaterMode =
-    isFullScreen && (view === 'live' || ((view === 'vod' || view === 'series') && !!playingMedia))
+  const theaterMode = isFullScreen && (view === 'live' || (mediaCapableView && !!playingMedia))
   useEffect(() => {
     if (!theaterMode) {
       setShowFsHint(false)
@@ -213,6 +229,10 @@ function App() {
     window.settings.load().then((loaded) => {
       setConfig(loaded)
       setConfigLoaded(true)
+    })
+    window.recorderSettings.load().then((loaded) => {
+      setRecorderConfig(loaded)
+      setRecorderConfigLoaded(true)
     })
     window.prefs.load().then((p) => {
       setFavorites(new Set(p.favoriteStreamIds))
@@ -294,20 +314,33 @@ function App() {
   }, [streamUrl])
 
   useEffect(() => {
-    if (!config || !playingMedia) return
+    if (!playingMedia) return
+    if (playingMedia.kind === 'recording') {
+      // The recorder's file endpoint (unlike every Xtream URL this app
+      // otherwise plays) requires a Bearer token rather than embedding
+      // credentials in the URL — carried via a ref, not state, so it doesn't
+      // become a dependency of the play effect below (see its own comment).
+      if (!recorderConfig) return
+      const conn = { baseUrl: recorderConfig.baseUrl, apiKey: recorderConfig.apiKey }
+      mediaHeadersRef.current = `Authorization: Bearer ${recorderConfig.apiKey}`
+      window.recorder.buildRecordingFileUrl(conn, playingMedia.item.id).then(setMediaStreamUrl)
+      return
+    }
+    if (!config) return
+    mediaHeadersRef.current = undefined
     const build =
       playingMedia.kind === 'vod'
         ? window.xtream.buildVodStreamUrl(config, playingMedia.item.streamId, playingMedia.item.containerExtension)
         : window.xtream.buildSeriesStreamUrl(config, playingMedia.item.id, playingMedia.item.containerExtension)
     build.then(setMediaStreamUrl)
-  }, [config, playingMedia])
+  }, [config, playingMedia, recorderConfig])
 
   // Mirrors the live-stream play effect above: loadfile replaces whatever mpv
-  // had loaded, so tuning live and playing a movie/episode share the same
-  // single mpv instance without any extra teardown.
+  // had loaded, so tuning live and playing a movie/episode/recording share the
+  // same single mpv instance without any extra teardown.
   useEffect(() => {
     if (mediaStreamUrl && playingMedia) {
-      window.playback.play(mediaStreamUrl, undefined)
+      window.playback.play(mediaStreamUrl, undefined, mediaHeadersRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mediaStreamUrl])
@@ -318,7 +351,7 @@ function App() {
     setMediaPosition(resumeSecs)
     setMediaDuration(0)
     setPlayingMedia(media)
-    setView(media.kind === 'vod' ? 'vod' : 'series')
+    setView(media.kind === 'vod' ? 'vod' : media.kind === 'episode' ? 'series' : 'recordings')
   }
 
   const stopMedia = () => {
@@ -343,7 +376,9 @@ function App() {
   // core is busy, so this stays a slow interval rather than a tight poll,
   // the same on-demand-only discipline PlayerStats uses.
   useEffect(() => {
-    if (!playingMedia || playbackStatus?.state !== 'playing') return
+    // Recordings don't get resume-position tracking (see PlayingMedia's own
+    // comment) — WatchProgress's schema is vod/episode-only.
+    if (!playingMedia || playingMedia.kind === 'recording' || playbackStatus?.state !== 'playing') return
     const key = mediaProgressKey(playingMedia)
     const saveNow = () => {
       Promise.all([window.mpv.getProperty('time-pos'), window.mpv.getProperty('duration')]).then(
@@ -638,15 +673,15 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefsLoaded, visibleChannels])
 
-  if (!configLoaded || !prefsLoaded) return null
+  if (!configLoaded || !prefsLoaded || !recorderConfigLoaded) return null
 
   const settingsOpen = !config || showSettings
-  // Live TV and a playing movie/episode all share the single mpv instance, so
-  // the player surface (and its native child window) stays mounted for any.
-  const playerActive = view === 'live' || ((view === 'vod' || view === 'series') && !!playingMedia)
-  const nowPlayingTitle =
-    (view === 'vod' || view === 'series') && playingMedia ? mediaTitle(playingMedia) : selectedStream?.name
-  const retryUrl = view === 'vod' || view === 'series' ? mediaStreamUrl : streamUrl
+  // Live TV and a playing movie/episode/recording all share the single mpv
+  // instance, so the player surface (and its native child window) stays
+  // mounted for any.
+  const playerActive = view === 'live' || (mediaCapableView && !!playingMedia)
+  const nowPlayingTitle = mediaCapableView && playingMedia ? mediaTitle(playingMedia) : selectedStream?.name
+  const retryUrl = mediaCapableView ? mediaStreamUrl : streamUrl
 
   return (
     <div className="app-root">
@@ -670,6 +705,8 @@ function App() {
           onStartupViewChange={changeStartupView}
           dismissedHomeItemCount={dismissedHomeItems.size}
           onResetDismissedHomeItems={resetDismissedHomeItems}
+          initialRecorderConfig={recorderConfig}
+          onRecorderSaved={setRecorderConfig}
         />
       )}
 
@@ -718,6 +755,12 @@ function App() {
                 onClick={() => openView('series')}
               >
                 TV Shows
+              </button>
+              <button
+                className={`app-tab${view === 'recordings' ? ' active' : ''}`}
+                onClick={() => openView('recordings')}
+              >
+                Recordings
               </button>
             </nav>
             <div className="app-header-spacer" />
@@ -775,7 +818,11 @@ function App() {
             {view === 'live' && selectedStream && !theaterMode && (
               <div className="player-toolbar">
                 <div className="toolbar-main">
-                  <NowNextBar stream={selectedStream} />
+                  <NowNextBar
+                    stream={selectedStream}
+                    recorderConfig={recorderConfig}
+                    onOpenSettings={() => setShowSettings(true)}
+                  />
                   {statsOpen && (
                     <div className="channel-meta">
                       {selectedStream.num > 0 && (
@@ -800,12 +847,12 @@ function App() {
                 />
               </div>
             )}
-            {(view === 'vod' || view === 'series') && playingMedia && (!theaterMode || pointerActive) && (
+            {mediaCapableView && playingMedia && (!theaterMode || pointerActive) && (
               <div className="media-toolbar">
                 <div className="media-toolbar-top">
                   <div className="vod-nowplaying">▶ {mediaTitle(playingMedia)}</div>
                   <button className="app-icon-btn" onClick={stopMedia}>
-                    ← Back to {view === 'vod' ? 'Movies' : 'TV Shows'}
+                    ← Back to {view === 'vod' ? 'Movies' : view === 'series' ? 'TV Shows' : 'Recordings'}
                   </button>
                 </div>
                 <MediaScrubber
@@ -874,6 +921,8 @@ function App() {
               selectedCategoryId={selectedCategoryId}
               selectedCategoryName={selectedCategoryName}
               onSelectCategory={selectLiveCategory}
+              recorderConfig={recorderConfig}
+              onOpenSettings={() => setShowSettings(true)}
             />
           </div>
         )}
@@ -917,6 +966,21 @@ function App() {
             }
             initialCategoryId={selectedSeriesCategoryId}
             onCategoryChange={selectSeriesCategory}
+          />
+        </div>
+
+        {/* Same reasoning as app-vod above, for "Back to Recordings". */}
+        <div className="app-recordings" style={{ display: view === 'recordings' && !playingMedia ? 'flex' : 'none' }}>
+          <RecordingsBrowser
+            recorderConfig={recorderConfig}
+            channels={channels}
+            onPlay={(recording) => {
+              const channelName =
+                channels.find((c) => String(c.streamId) === recording.channelId)?.name ??
+                `Channel ${recording.channelId}`
+              playMedia({ kind: 'recording', item: recording, channelName }, 0)
+            }}
+            onOpenSettings={() => setShowSettings(true)}
           />
         </div>
         </>

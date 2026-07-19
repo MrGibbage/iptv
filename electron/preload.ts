@@ -1,5 +1,7 @@
 import { ipcRenderer, contextBridge } from 'electron'
 import type { XtreamConfig } from './xtream'
+import type { RecorderConnection, RecordingsFilter, RecurringRulesFilter, RecurrencePattern } from './recorder'
+import type { RecorderConfig } from './recorder-settings-store'
 
 // --------- Expose some API to the Renderer process ---------
 contextBridge.exposeInMainWorld('ipcRenderer', {
@@ -94,7 +96,8 @@ contextBridge.exposeInMainWorld('settings', {
 
 // --------- Expose watched playback (loadfile + failure detection) ---------
 contextBridge.exposeInMainWorld('playback', {
-  play: (url: string, streamId?: number) => ipcRenderer.invoke('playback:play', url, streamId),
+  play: (url: string, streamId?: number, headers?: string) =>
+    ipcRenderer.invoke('playback:play', url, streamId, headers),
   stop: () => ipcRenderer.invoke('playback:stop'),
   setSoftwareDecoding: (enabled: boolean) =>
     ipcRenderer.invoke('playback:setSoftwareDecoding', enabled),
@@ -138,4 +141,37 @@ contextBridge.exposeInMainWorld('epg', {
     ipcRenderer.on('epg:status', listener as never)
     return () => ipcRenderer.removeListener('epg:status', listener as never)
   },
+})
+
+// --------- Expose recorder (iptv-recorder companion service) settings ---------
+contextBridge.exposeInMainWorld('recorderSettings', {
+  load: () => ipcRenderer.invoke('recorderSettings:load'),
+  save: (config: RecorderConfig) => ipcRenderer.invoke('recorderSettings:save', config),
+})
+
+// --------- Expose the recorder (iptv-recorder companion service) API ---------
+contextBridge.exposeInMainWorld('recorder', {
+  testConnection: (conn: RecorderConnection) => ipcRenderer.invoke('recorder:testConnection', conn),
+  listProviders: (conn: RecorderConnection) => ipcRenderer.invoke('recorder:listProviders', conn),
+  getProviderStatus: (conn: RecorderConnection, providerId: number) =>
+    ipcRenderer.invoke('recorder:getProviderStatus', conn, providerId),
+  createOneOffRecording: (
+    conn: RecorderConnection,
+    input: { providerId: number; channelId: string; startTime: string; endTime: string },
+  ) => ipcRenderer.invoke('recorder:createOneOffRecording', conn, input),
+  createRecurringRecording: (
+    conn: RecorderConnection,
+    input: { providerId: number; channelId: string; recurrence: RecurrencePattern },
+  ) => ipcRenderer.invoke('recorder:createRecurringRecording', conn, input),
+  listRecordings: (conn: RecorderConnection, filter?: RecordingsFilter) =>
+    ipcRenderer.invoke('recorder:listRecordings', conn, filter),
+  cancelRecording: (conn: RecorderConnection, id: number) => ipcRenderer.invoke('recorder:cancelRecording', conn, id),
+  buildRecordingFileUrl: (conn: RecorderConnection, id: number) =>
+    ipcRenderer.invoke('recorder:buildRecordingFileUrl', conn, id),
+  listRecurringRules: (conn: RecorderConnection, filter?: RecurringRulesFilter) =>
+    ipcRenderer.invoke('recorder:listRecurringRules', conn, filter),
+  skipOccurrence: (conn: RecorderConnection, ruleId: number, date: string) =>
+    ipcRenderer.invoke('recorder:skipOccurrence', conn, ruleId, date),
+  cancelRecurringRule: (conn: RecorderConnection, ruleId: number) =>
+    ipcRenderer.invoke('recorder:cancelRecurringRule', conn, ruleId),
 })

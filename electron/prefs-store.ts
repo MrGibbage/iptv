@@ -12,7 +12,7 @@ export interface Prefs {
   selectedLiveCategoryId: string | null
   selectedVodCategoryId: string | null
   selectedSeriesCategoryId: string | null
-  startupView: 'home' | 'live' | 'guide' | 'vod' | 'series'
+  startupView: 'home' | 'live' | 'guide' | 'vod' | 'series' | 'recordings'
   dismissedHomeItems: string[]
   // When true, mpv decodes in software (hwdec=no) instead of on the GPU. Off
   // by default; a "maximum compatibility" escape hatch for the rare malformed
@@ -46,7 +46,7 @@ export async function loadPrefs(): Promise<Prefs> {
         typeof raw.selectedVodCategoryId === 'string' ? raw.selectedVodCategoryId : null,
       selectedSeriesCategoryId:
         typeof raw.selectedSeriesCategoryId === 'string' ? raw.selectedSeriesCategoryId : null,
-      startupView: ['home', 'live', 'guide', 'vod', 'series'].includes(raw.startupView ?? '')
+      startupView: ['home', 'live', 'guide', 'vod', 'series', 'recordings'].includes(raw.startupView ?? '')
         ? raw.startupView!
         : 'live',
       dismissedHomeItems: Array.isArray(raw.dismissedHomeItems)

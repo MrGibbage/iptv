@@ -3,8 +3,10 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import type { LiveStream, XtreamConfig } from '../../electron/xtream'
 import type { EpgBounds, EpgProgram, EpgSearchResult } from '../../electron/epg-db'
 import type { EpgStatus } from '../../electron/epg'
+import type { RecorderConfig } from '../../electron/recorder-settings-store'
 import CategoryFilter from './CategoryFilter'
 import type { CategoryOption } from './ChannelList'
+import RecordDialog from './RecordDialog'
 import './epg.css'
 
 // Keep CH_COL_W in sync with .epg-channel-cell width in epg.css.
@@ -59,9 +61,11 @@ interface EpgGridProps {
   selectedCategoryId: string | null
   selectedCategoryName: string | null
   onSelectCategory: (categoryId: string | null) => void
+  recorderConfig: RecorderConfig | null
+  onOpenSettings: () => void
 }
 
-function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune, categories, selectedCategoryId, selectedCategoryName, onSelectCategory }: EpgGridProps) {
+function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune, categories, selectedCategoryId, selectedCategoryName, onSelectCategory, recorderConfig, onOpenSettings }: EpgGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [dayStartMs, setDayStartMs] = useState(() => localMidnight(Date.now()))
   const [programs, setPrograms] = useState<Map<string, EpgProgram[]>>(new Map())
@@ -74,6 +78,7 @@ function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune,
   const [searchResults, setSearchResults] = useState<EpgSearchResult[]>([])
   const [jumpTarget, setJumpTarget] = useState<{ channelId: string; timeMs: number } | null>(null)
   const lastRefreshRef = useRef<number | null>(null)
+  const [recordTarget, setRecordTarget] = useState<{ stream: LiveStream; startMs: number; stopMs: number } | null>(null)
 
   const dayEndMs = nextMidnight(dayStartMs)
   const dayMinutes = (dayEndMs - dayStartMs) / 60_000
@@ -438,13 +443,38 @@ function EpgGrid({ config, channels, hiddenEpgChannelIds, tunedStreamId, onTune,
                 <div className="epg-detail-desc">{selected.program.description || 'No description.'}</div>
               </div>
               {streamsByEpgId.has(selected.program.channelId) && (
-                <button onClick={() => onTune(streamsByEpgId.get(selected.program.channelId)!)}>▶ Watch</button>
+                <div className="settings-actions">
+                  <button onClick={() => onTune(streamsByEpgId.get(selected.program.channelId)!)}>▶ Watch</button>
+                  <button
+                    onClick={() =>
+                      setRecordTarget({
+                        stream: streamsByEpgId.get(selected.program.channelId)!,
+                        startMs: selected.program.startMs,
+                        stopMs: selected.program.stopMs,
+                      })
+                    }
+                  >
+                    ⏺ Record
+                  </button>
+                </div>
               )}
             </>
           ) : (
             <div className="epg-detail-empty">Select a program to see details.</div>
           )}
         </div>
+      )}
+
+      {recordTarget && (
+        <RecordDialog
+          recorderConfig={recorderConfig}
+          channelName={recordTarget.stream.name}
+          channelId={String(recordTarget.stream.streamId)}
+          initialStart={new Date(recordTarget.startMs)}
+          initialEnd={new Date(recordTarget.stopMs)}
+          onClose={() => setRecordTarget(null)}
+          onOpenSettings={onOpenSettings}
+        />
       )}
     </div>
   )

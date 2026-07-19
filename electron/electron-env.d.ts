@@ -104,7 +104,7 @@ interface Window {
     save: (key: string, progress: import('../electron/progress-store').WatchProgress) => Promise<void>
   }
   playback: {
-    play: (url: string, streamId?: number) => Promise<void>
+    play: (url: string, streamId?: number, headers?: string) => Promise<void>
     stop: () => Promise<void>
     setSoftwareDecoding: (enabled: boolean) => Promise<void>
     onStatus: (
@@ -126,5 +126,61 @@ interface Window {
     search: (query: string) => Promise<import('../electron/epg-db').EpgSearchResult[]>
     getBounds: () => Promise<import('../electron/epg-db').EpgBounds>
     onStatus: (callback: (status: import('../electron/epg').EpgStatus) => void) => () => void
+  }
+  recorderSettings: {
+    load: () => Promise<import('../electron/recorder-settings-store').RecorderConfig | null>
+    save: (config: import('../electron/recorder-settings-store').RecorderConfig) => Promise<void>
+  }
+  recorder: {
+    testConnection: (
+      conn: import('../electron/recorder').RecorderConnection,
+    ) => Promise<import('../electron/recorder').RecorderTestResult>
+    listProviders: (
+      conn: import('../electron/recorder').RecorderConnection,
+    ) => Promise<import('../electron/recorder').Provider[]>
+    getProviderStatus: (
+      conn: import('../electron/recorder').RecorderConnection,
+      providerId: number,
+    ) => Promise<import('../electron/recorder').ProviderStatus>
+    createOneOffRecording: (
+      conn: import('../electron/recorder').RecorderConnection,
+      input: { providerId: number; channelId: string; startTime: string; endTime: string },
+    ) => Promise<import('../electron/recorder').RecorderResult<import('../electron/recorder').Recording>>
+    createRecurringRecording: (
+      conn: import('../electron/recorder').RecorderConnection,
+      input: {
+        providerId: number
+        channelId: string
+        recurrence: import('../electron/recorder').RecurrencePattern
+      },
+    ) => Promise<import('../electron/recorder').RecorderResult<import('../electron/recorder').RecurringRule>>
+    listRecordings: (
+      conn: import('../electron/recorder').RecorderConnection,
+      filter?: import('../electron/recorder').RecordingsFilter,
+    ) => Promise<
+      Array<import('../electron/recorder').Recording | import('../electron/recorder').ProjectedOccurrence>
+    >
+    cancelRecording: (
+      conn: import('../electron/recorder').RecorderConnection,
+      id: number,
+    ) => Promise<import('../electron/recorder').RecorderResult<void>>
+    buildRecordingFileUrl: (conn: import('../electron/recorder').RecorderConnection, id: number) => Promise<string>
+    listRecurringRules: (
+      conn: import('../electron/recorder').RecorderConnection,
+      filter?: import('../electron/recorder').RecurringRulesFilter,
+    ) => Promise<import('../electron/recorder').RecurringRule[]>
+    skipOccurrence: (
+      conn: import('../electron/recorder').RecorderConnection,
+      ruleId: number,
+      date: string,
+    ) => Promise<
+      import('../electron/recorder').RecorderResult<
+        import('../electron/recorder').Recording | import('../electron/recorder').SkipException
+      >
+    >
+    cancelRecurringRule: (
+      conn: import('../electron/recorder').RecorderConnection,
+      ruleId: number,
+    ) => Promise<import('../electron/recorder').RecorderResult<import('../electron/recorder').RecurringRuleCancelResult>>
   }
 }

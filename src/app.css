@@ -1374,3 +1374,121 @@
   padding: 2px 8px;
   text-align: center;
 }
+
+/* Recordings (iptv-recorder companion service) */
+.app-recordings {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.recordings-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+
+.recordings-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.recordings-section {
+  margin-bottom: 22px;
+}
+
+.recordings-section h3 {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.recordings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.recordings-row:last-child {
+  border-bottom: none;
+}
+
+.recordings-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.recordings-row-time {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.recordings-row-error {
+  font-size: 0.8rem;
+  color: var(--danger);
+}
+
+.recordings-badge {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+.recordings-badge-live {
+  background: rgba(240, 96, 107, 0.16);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* Record dialog (schedule a one-off/recurring recording from Guide/NowNext) */
+.record-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.record-dialog-card {
+  width: min(440px, 90vw);
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 22px;
+}
+
+.record-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.record-dialog-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.record-dialog-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}

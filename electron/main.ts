@@ -13,6 +13,9 @@ import * as windowStateStore from './window-state-store'
 import * as epg from './epg'
 import * as epgDb from './epg-db'
 import * as playback from './playback'
+import type { RecorderConnection } from './recorder'
+import * as recorder from './recorder'
+import * as recorderSettingsStore from './recorder-settings-store'
 import { createDiagnosticReport, log, logsDir, rotateLogs } from './logger'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -253,8 +256,8 @@ ipcMain.handle('app:createDiagnosticReport', () => {
 // mousemove listener can't see motion over the video).
 ipcMain.handle('app:getCursorPoint', () => screen.getCursorScreenPoint())
 
-ipcMain.handle('playback:play', (_event, url: string, streamId?: number) => {
-  playback.play(url, streamId)
+ipcMain.handle('playback:play', (_event, url: string, streamId?: number, headers?: string) => {
+  playback.play(url, streamId, headers)
 })
 
 ipcMain.handle('playback:stop', () => {
@@ -383,6 +386,84 @@ ipcMain.handle('epg:getBounds', () => {
 
 epg.onStatusChange((status) => {
   sendToRenderer(win, 'epg:status', status)
+})
+
+ipcMain.handle('recorderSettings:load', () => {
+  return recorderSettingsStore.loadRecorderConfig()
+})
+
+ipcMain.handle('recorderSettings:save', (_event, config: recorderSettingsStore.RecorderConfig) => {
+  return loggedOperation('save recorder settings', () => recorderSettingsStore.saveRecorderConfig(config))
+})
+
+ipcMain.handle('recorder:testConnection', (_event, conn: RecorderConnection) => {
+  return loggedOperation('recorder connection test', () => recorder.testConnection(conn), (result) => `result=${result.ok ? 'passed' : 'failed'}`)
+})
+
+ipcMain.handle('recorder:listProviders', (_event, conn: RecorderConnection) => {
+  return loggedOperation('recorder list providers', () => recorder.listProviders(conn), (items) => `count=${items.length}`)
+})
+
+ipcMain.handle('recorder:getProviderStatus', (_event, conn: RecorderConnection, providerId: number) => {
+  return recorder.getProviderStatus(conn, providerId)
+})
+
+// The recording/schedule mutations below can hard-reject with a specific,
+// user-facing reason (409: disabled provider, storage exhaustion,
+// concurrent-stream limit, same-channel conflict) that the UI must show
+// as-is rather than a generic failure — so these return a RecorderResult
+// instead of throwing (see recorder.ts's toErrorInfo for why).
+async function handleRecorderMutation<T>(
+  name: string,
+  operation: () => Promise<T>,
+): Promise<recorder.RecorderResult<T>> {
+  try {
+    const data = await loggedOperation(name, operation)
+    return { ok: true, data }
+  } catch (err) {
+    return { ok: false, error: recorder.toErrorInfo(err) }
+  }
+}
+
+ipcMain.handle(
+  'recorder:createOneOffRecording',
+  (_event, conn: RecorderConnection, input: Parameters<typeof recorder.createOneOffRecording>[1]) => {
+    return handleRecorderMutation('recorder schedule one-off recording', () => recorder.createOneOffRecording(conn, input))
+  },
+)
+
+ipcMain.handle(
+  'recorder:createRecurringRecording',
+  (_event, conn: RecorderConnection, input: Parameters<typeof recorder.createRecurringRecording>[1]) => {
+    return handleRecorderMutation('recorder schedule recurring recording', () => recorder.createRecurringRecording(conn, input))
+  },
+)
+
+ipcMain.handle('recorder:listRecordings', (_event, conn: RecorderConnection, filter?: recorder.RecordingsFilter) => {
+  return loggedOperation('recorder list recordings', () => recorder.listRecordings(conn, filter), (items) => `count=${items.length}`)
+})
+
+ipcMain.handle('recorder:cancelRecording', (_event, conn: RecorderConnection, id: number) => {
+  return handleRecorderMutation('recorder cancel recording', () => recorder.cancelRecording(conn, id))
+})
+
+ipcMain.handle('recorder:buildRecordingFileUrl', (_event, conn: RecorderConnection, id: number) => {
+  return recorder.buildRecordingFileUrl(conn, id)
+})
+
+ipcMain.handle(
+  'recorder:listRecurringRules',
+  (_event, conn: RecorderConnection, filter?: recorder.RecurringRulesFilter) => {
+    return loggedOperation('recorder list recurring rules', () => recorder.listRecurringRules(conn, filter), (items) => `count=${items.length}`)
+  },
+)
+
+ipcMain.handle('recorder:skipOccurrence', (_event, conn: RecorderConnection, ruleId: number, date: string) => {
+  return handleRecorderMutation('recorder skip occurrence', () => recorder.skipOccurrence(conn, ruleId, date))
+})
+
+ipcMain.handle('recorder:cancelRecurringRule', (_event, conn: RecorderConnection, ruleId: number) => {
+  return handleRecorderMutation('recorder cancel recurring rule', () => recorder.cancelRecurringRule(conn, ruleId))
 })
 
 process.on('uncaughtException', (err) => {

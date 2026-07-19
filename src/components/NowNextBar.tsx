@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { LiveStream } from '../../electron/xtream'
 import type { EpgProgram } from '../../electron/epg-db'
+import type { RecorderConfig } from '../../electron/recorder-settings-store'
+import RecordDialog from './RecordDialog'
 import './epg.css'
 
 function fmtTime(ms: number): string {
@@ -9,11 +11,14 @@ function fmtTime(ms: number): string {
 
 interface NowNextBarProps {
   stream: LiveStream | null
+  recorderConfig: RecorderConfig | null
+  onOpenSettings: () => void
 }
 
-function NowNextBar({ stream }: NowNextBarProps) {
+function NowNextBar({ stream, recorderConfig, onOpenSettings }: NowNextBarProps) {
   const [nowProg, setNowProg] = useState<EpgProgram | null>(null)
   const [nextProg, setNextProg] = useState<EpgProgram | null>(null)
+  const [recordTarget, setRecordTarget] = useState<EpgProgram | null>(null)
 
   useEffect(() => {
     setNowProg(null)
@@ -47,6 +52,9 @@ function NowNextBar({ stream }: NowNextBarProps) {
         <span className="nn-slot">
           <span className="nn-label">NOW</span>
           {nowProg.title} ({fmtTime(nowProg.startMs)}–{fmtTime(nowProg.stopMs)})
+          <button className="app-icon-btn" title="Record this program" onClick={() => setRecordTarget(nowProg)}>
+            ⏺
+          </button>
         </span>
       ) : (
         <span className="nn-slot nn-label">No guide data</span>
@@ -55,7 +63,22 @@ function NowNextBar({ stream }: NowNextBarProps) {
         <span className="nn-slot">
           <span className="nn-label">NEXT</span>
           {nextProg.title} ({fmtTime(nextProg.startMs)})
+          <button className="app-icon-btn" title="Record this program" onClick={() => setRecordTarget(nextProg)}>
+            ⏺
+          </button>
         </span>
+      )}
+
+      {recordTarget && (
+        <RecordDialog
+          recorderConfig={recorderConfig}
+          channelName={stream.name}
+          channelId={String(stream.streamId)}
+          initialStart={new Date(recordTarget.startMs)}
+          initialEnd={new Date(recordTarget.stopMs)}
+          onClose={() => setRecordTarget(null)}
+          onOpenSettings={onOpenSettings}
+        />
       )}
     </div>
   )

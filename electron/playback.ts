@@ -152,7 +152,11 @@ function setPhase(next: PlaybackStatus['state'], message?: string): void {
   emit({ state: next, message, streamId: currentStreamId })
 }
 
-export function play(url: string, streamId?: number): void {
+// `headers` is mpv's raw http-header-fields value (e.g. "Authorization: Bearer
+// xyz") applied only to this load — used for the recorder's completed-file
+// endpoint, which (unlike every Xtream URL this app otherwise plays) requires
+// a Bearer token rather than embedding credentials in the URL itself.
+export function play(url: string, streamId?: number, headers?: string): void {
   if (!player) return
   clearTimers()
   currentStreamId = streamId
@@ -170,17 +174,21 @@ export function play(url: string, streamId?: number): void {
     setPhase('loading')
     settleTimer = setTimeout(() => {
       settleTimer = null
-      doLoad(url)
+      doLoad(url, headers)
     }, POST_FAIL_SETTLE_MS - sinceFail)
     return
   }
-  doLoad(url)
+  doLoad(url, headers)
 }
 
-function doLoad(url: string): void {
+function doLoad(url: string, headers?: string): void {
   if (!player) return
   log('playback', `load requested streamId=${currentStreamId ?? 'media'}`)
-  player.command('loadfile', url, 'replace')
+  if (headers) {
+    player.command('loadfile', url, 'replace', '-1', `http-header-fields=${headers}`)
+  } else {
+    player.command('loadfile', url, 'replace')
+  }
   setPhase('loading')
   openTimer = setTimeout(() => fail('Stream did not start'), OPEN_TIMEOUT_MS)
   armWedgeWatch()
